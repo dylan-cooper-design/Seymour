@@ -1,0 +1,12 @@
+---
+description: AI agents structure and how to add agents/skills
+globs: src/agents/**/*
+alwaysApply: false
+---
+
+# Agents
+
+- **Layout**: One folder per agent under `src/agents/` (e.g. `src/agents/first/`, `src/agents/support/`). Each agent has an entry point (e.g. API route or server action) and optional `skills/` (and optionally `integrations/`) subfolders.
+- **Skills**: Add new skills as modules under that agent's `skills/` folder. For shared behavior across agents, use `src/agents/shared/skills/`.
+- **Adding an agent**: Create a new folder under `src/agents/`, add the entry point and at least one skill or placeholder, and document the agent in `docs/agents/`.
+- **Adding a skill or integration**: Add a new module under the agent's `skills/` (or shared skills); keep each skill focused and pluggable.

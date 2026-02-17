@@ -1,0 +1,24 @@
+---
+description: Core coding standards and project conventions
+alwaysApply: true
+---
+
+# Seymour project conventions
+
+- **Stack**: Next.js 15 (App Router), TypeScript (strict), Tailwind CSS for UI.
+- **File size**: Keep files under ~300 lines; split into smaller modules when larger.
+- **Naming**: Use descriptive filenames (e.g. `password-hashing.ts` over `helpers.ts`). Avoid vague names like `utils.ts`, `helpers.ts`, `misc.ts`.
+- **Co-locate**: Put related code, types, and tests together where practical.
+- **Prose**: Do not use em dashes in user-facing or documentation text.
+
+## Examples
+
+```typescript
+// Prefer specific names
+// BAD: utils.ts with mixed helpers
+// GOOD: format-date.ts, parse-query.ts
+
+// Prefer Tailwind over inline styles
+// BAD: <div style={{ padding: 16 }}>
+// GOOD: <div className="p-4">
+```

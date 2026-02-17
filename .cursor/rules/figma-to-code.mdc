@@ -1,0 +1,12 @@
+---
+description: Figma MCP to code workflow and component placement
+globs: src/components/**/*
+alwaysApply: false
+---
+
+# Figma to code
+
+- **Figma MCP**: Use node ID and file key from the Figma URL (e.g. `?node-id=1-2` gives nodeId `1:2`; file key is the design ID in the URL path).
+- **Where components go**: Put new or generated UI from Figma in `src/components/`. Use clear, descriptive component names.
+- **Styling**: Use Tailwind for layout and styles. Avoid inline styles so generated code matches the rest of the app. Align with design tokens / Tailwind theme where possible.
+- **Screens**: When implementing a screen, add or update the relevant route under `src/app/` and use components from `src/components/`.

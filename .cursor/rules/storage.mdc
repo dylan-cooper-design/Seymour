@@ -1,0 +1,12 @@
+---
+description: Local storage usage and conventions
+globs: src/lib/storage*
+alwaysApply: false
+---
+
+# Local storage
+
+- **Location**: All localStorage access goes through helpers in `src/lib/storage/`. Do not call `localStorage` directly from app or agent code.
+- **Client-side only**: Storage helpers run in the browser only (e.g. in components or client-side agent code). Do not use in server components or during SSR without guards.
+- **Typed keys**: Use a single key prefix for the app and typed get/set so keys stay consistent and values are parsed/serialized in one place.
+- **No secrets**: Do not store secrets or tokens in localStorage; it is not secure.
