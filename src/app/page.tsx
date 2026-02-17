@@ -99,8 +99,11 @@ function normalizeThreadMessage(message: Partial<ThreadMessage>): ThreadMessage 
   };
 }
 
-function itemGreeting(label: string): string {
-  return `${CHAT_GREETING}\n\nCurrent focus: ${label}`;
+function milestoneEmptyState(label: string, objective?: string): string {
+  if (!objective) {
+    return `Ready to work on: ${label}\n\nAsk me anything to get started.`;
+  }
+  return `${label}\n\n${objective}\n\nWhat would you like to work on first?`;
 }
 
 function goalThreadGreeting(): string {
@@ -135,7 +138,11 @@ function ensureThreads(
   for (const item of getAllItems(navModel)) {
     validIds.add(item.id);
     if (!next[item.id] || next[item.id].length === 0) {
-      next[item.id] = [createMessage("assistant", itemGreeting(item.label), { state: "complete" })];
+      next[item.id] = [
+        createMessage("assistant", milestoneEmptyState(item.label, item.objective), {
+          state: "complete",
+        }),
+      ];
     }
   }
 

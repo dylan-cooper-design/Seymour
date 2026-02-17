@@ -2,6 +2,8 @@
 
 import type { MilestoneStatus, NavGroup } from "@/types/navigation";
 
+const GOAL_THREAD_ID = "goal-definition";
+
 type NavProps = {
   projectName: string;
   foundationLabel: string;
@@ -90,15 +92,26 @@ export function Nav({
 
       <div className="flex-1 overflow-y-auto">
         <div className="px-3 py-2">
-          <div className="rounded bg-[#302f2d] px-3">
-            <div className="flex h-8 items-center gap-2">
-              <span
-                className="inline-block size-4 rounded border border-[#e3e2e1]/70"
-                aria-hidden="true"
-              />
-              <span className="text-sm font-medium text-[#e3e2e1]">{foundationLabel}</span>
-            </div>
-          </div>
+          <button
+            type="button"
+            onClick={() => onSelectItem(GOAL_THREAD_ID)}
+            className={`flex h-8 w-full items-center gap-2 rounded px-3 text-left transition-colors ${
+              activeNavItemId === GOAL_THREAD_ID ? "bg-[#302f2d]" : "hover:bg-[#232426]"
+            }`}
+            aria-current={activeNavItemId === GOAL_THREAD_ID ? "page" : undefined}
+          >
+            <span
+              className="inline-block size-4 shrink-0 rounded border border-[#e3e2e1]/70"
+              aria-hidden="true"
+            />
+            <span
+              className={`text-sm font-medium ${
+                activeNavItemId === GOAL_THREAD_ID ? "text-[#d4b774]" : "text-[#e3e2e1]"
+              }`}
+            >
+              {foundationLabel}
+            </span>
+          </button>
         </div>
 
         {!hasMilestones && (

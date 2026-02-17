@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { SEYMOUR_INSTRUCTIONS } from "../../../../agents/first/prompt";
+import { getSeymourInstructions } from "../../../../agents/first/prompt";
 import { generateMilestonesAndDecisions } from "@/lib/planning/generate-plan";
 import type { NavModel, NavPatch } from "@/types/navigation";
 
@@ -175,7 +175,7 @@ export async function POST(request: Request) {
     const stream = client.messages.stream({
       model: "claude-sonnet-4-5",
       max_tokens: 800,
-      system: SEYMOUR_INSTRUCTIONS,
+      system: getSeymourInstructions(),
       messages: [
         {
           role: "user",
