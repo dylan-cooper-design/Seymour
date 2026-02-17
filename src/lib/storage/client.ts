@@ -58,4 +58,19 @@ export function removeStorage(key: keyof typeof storageKeys): void {
   removeItem(storageKeys[key as keyof typeof storageKeys]);
 }
 
+/**
+ * Clear all app data from localStorage. Use to reset to default state.
+ * Call window.location.reload() after to fully reset the app.
+ */
+export function clearAllStorage(): void {
+  if (typeof window === "undefined") return;
+  try {
+    for (const key of Object.values(storageKeys)) {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore
+  }
+}
+
 export { storageKeys };

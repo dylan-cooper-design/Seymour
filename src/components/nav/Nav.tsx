@@ -1,5 +1,6 @@
 "use client";
 
+import { clearAllStorage } from "@/lib/storage";
 import type { MilestoneStatus, NavGroup } from "@/types/navigation";
 
 const GOAL_THREAD_ID = "goal-definition";
@@ -168,6 +169,19 @@ export function Nav({
               )}
             </div>
           ))}
+      </div>
+
+      <div className="mt-auto border-t border-[#302f2d] p-4">
+        <button
+          type="button"
+          onClick={() => {
+            clearAllStorage();
+            window.location.reload();
+          }}
+          className="w-full rounded border border-[#302f2d] px-3 py-2 text-xs text-[#e3e2e1]/70 transition hover:bg-[#232426] hover:text-[#e3e2e1]"
+        >
+          Reset App
+        </button>
       </div>
     </aside>
   );
