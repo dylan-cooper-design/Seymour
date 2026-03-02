@@ -3,6 +3,7 @@
 import { forwardRef } from "react";
 import type { ThreadMessage } from "@/types/navigation";
 import { MessageBubble } from "./MessageBubble";
+import { UserMessage } from "./UserMessage";
 
 type MessageListProps = {
   messages: ThreadMessage[];
@@ -20,24 +21,28 @@ export const MessageList = forwardRef<HTMLDivElement, MessageListProps>(
       <div
         ref={ref}
         onScroll={onScroll}
-        className="flex w-full max-w-[744px] flex-1 flex-col gap-6 overflow-y-auto px-0 pb-6 pt-16"
+        className="flex w-full max-w-message-list flex-1 flex-col items-start justify-start gap-6 overflow-y-auto px-0 pb-6 pt-16"
         role="log"
         aria-live="polite"
       >
-        {messages.map((msg) => (
-          <MessageBubble
-            key={msg.id}
-            role={msg.role}
-            text={msg.text}
-            state={msg.state}
-          />
-        ))}
+        {messages.map((msg) =>
+          msg.role === "user" ? (
+            <UserMessage key={msg.id} text={msg.text} />
+          ) : (
+            <MessageBubble
+              key={msg.id}
+              role={msg.role}
+              text={msg.text}
+              state={msg.state}
+            />
+          )
+        )}
         {isStreaming && (
           <div className="flex justify-start">
             <button
               type="button"
               onClick={onStopGenerating}
-              className="rounded-full border border-[#3f3e3a] px-3 py-1 text-xs text-[#e3e2e1]/80 transition hover:border-[#d4b774] hover:text-[#e3e2e1] focus:outline-none focus:ring-2 focus:ring-[#d4b774]/60"
+              className="rounded-full border border-seymour-border-subtle px-3 py-1 text-xs text-seymour-text/80 transition hover:border-seymour-accent hover:text-seymour-text focus:outline-none focus:ring-2 focus:ring-seymour-accent/60"
             >
               Stop generating
             </button>

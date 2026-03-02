@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatComposer } from "@/components/ChatComposer";
 import { CHAT_GREETING } from "@/components/ChatEmptyState";
 import { MessageList } from "@/components/MessageList";
-import { MilestoneDetailPanel } from "@/components/MilestoneDetailPanel";
 import { Nav } from "@/components/nav/Nav";
 import { getStorage, setStorage } from "@/lib/storage";
 import type {
@@ -14,6 +13,7 @@ import type {
   MilestoneStatus,
   NavModel,
   NavPatch,
+  SidebarNavData,
   ThreadMessage,
   ThreadsByNavItemId,
 } from "@/types/navigation";
@@ -120,6 +120,26 @@ function findItemById(navModel: NavModel, itemId: string) {
 
 function getFallbackActiveItemId(navModel: NavModel): string {
   return getAllItems(navModel)[0]?.id ?? INITIAL_ACTIVE_NAV_ITEM_ID;
+}
+
+function navToSidebarData(navModel: NavModel): SidebarNavData {
+  return {
+    projectName: navModel.projectName,
+    platform: [
+      { id: GOAL_THREAD_ID, label: navModel.foundationLabel },
+    ],
+    milestones: navModel.groups.map((group) => ({
+      id: group.id,
+      label: group.label,
+      isDimmed: group.isDimmed,
+      children: group.items.map((item) => ({
+        id: item.id,
+        label: item.label,
+        status: item.status,
+        decisions: item.decisions,
+      })),
+    })),
+  };
 }
 
 function ensureThreads(
@@ -312,14 +332,16 @@ export default function Home() {
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [currentGoal, setCurrentGoal] = useState<Goal | null>(null);
 
+  useEffect(() => {
+    document.body.style.pointerEvents = "";
+    return () => {
+      document.body.style.pointerEvents = "";
+    };
+  }, []);
+
   const messages = useMemo<ThreadMessage[]>(() => {
     return threadsByNavItemId[activeNavItemId] ?? [];
   }, [activeNavItemId, threadsByNavItemId]);
-
-  const activeNavItem = useMemo(
-    () => findItemById(navModel, activeNavItemId),
-    [navModel, activeNavItemId]
-  );
 
   const scrollToBottom = useCallback(() => {
     messagesRef.current?.scrollTo({
@@ -583,29 +605,6 @@ export default function Home() {
     setIsNearBottom(true);
   }, []);
 
-  const handleToggleDecision = useCallback((milestoneId: string, decisionId: string) => {
-    setNavModel((prev) => {
-      const next = {
-        ...prev,
-        groups: prev.groups.map((group) => ({
-          ...group,
-          items: group.items.map((item) => {
-            if (item.id !== milestoneId || !item.decisions) return item;
-            return {
-              ...item,
-              decisions: item.decisions.map((d) =>
-                d.id === decisionId
-                  ? { ...d, status: d.status === "todo" ? ("done" as const) : ("todo" as const) }
-                  : d
-              ),
-            };
-          }),
-        })),
-      };
-      return next;
-    });
-  }, []);
-
   const handleStopGenerating = useCallback(() => {
     if (!abortControllerRef.current) return;
     stopRequestedRef.current = true;
@@ -624,18 +623,6 @@ export default function Home() {
     setIsNearBottom(distanceFromBottom <= AUTO_SCROLL_THRESHOLD_PX);
   }, []);
 
-  const handleToggleGroup = useCallback((groupId: string) => {
-    setNavModel((prev) => ({
-      ...prev,
-      groups: prev.groups.map((group) => {
-        if (group.id === groupId) {
-          return { ...group, isExpanded: !group.isExpanded, isDimmed: false };
-        }
-        return { ...group, isExpanded: false };
-      }),
-    }));
-  }, []);
-
   useEffect(() => {
     if (isNearBottom) {
       scrollToBottom();
@@ -643,30 +630,20 @@ export default function Home() {
   }, [activeNavItemId, isNearBottom, messages, scrollToBottom]);
 
   return (
-    <div className="flex min-h-screen bg-[#1c1d1f]">
+    <div className="flex min-h-screen bg-seymour-canvas">
       <Nav
-        projectName={navModel.projectName}
-        foundationLabel={navModel.foundationLabel}
-        groups={navModel.groups}
+        nav={navToSidebarData(navModel)}
         activeNavItemId={activeNavItemId}
         onSelectItem={handleSelectItem}
-        onToggleGroup={handleToggleGroup}
       />
       <main
-        className="flex min-h-screen w-[872px] min-w-[872px] flex-col bg-[#1c1d1f]"
+        className="flex h-screen flex-1 flex-col overflow-hidden bg-seymour-canvas"
         role="main"
       >
         <section
           className="flex flex-1 flex-col items-center overflow-hidden"
           aria-label="Chat"
         >
-          {activeNavItem &&
-            activeNavItemId !== GOAL_THREAD_ID && (
-              <MilestoneDetailPanel
-                milestone={activeNavItem}
-                onToggleDecision={handleToggleDecision}
-              />
-            )}
           <MessageList
             messages={messages}
             isStreaming={isStreaming}
@@ -692,12 +669,14 @@ export default function Home() {
             </div>
           )}
         </section>
-        <ChatComposer
-          value={inputValue}
-          onChange={setInputValue}
-          onSend={sendMessage}
-          disabled={isSending}
-        />
+        <div className="shrink-0">
+          <ChatComposer
+            value={inputValue}
+            onChange={setInputValue}
+            onSend={sendMessage}
+            disabled={isSending}
+          />
+        </div>
       </main>
     </div>
   );
