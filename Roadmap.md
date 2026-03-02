@@ -44,10 +44,10 @@ When working with Claude Code, use this prompt template:
 
 > Make sure the foundation is solid before building more UI.
 
-- [ ] **2.1** Audit existing Tailwind config. Document all defined tokens (colors, spacing, typography, radii, shadows).
-- [ ] **2.2** Compare config tokens against Figma designs. Identify gaps — values used in Figma that don't have a token yet.
-- [ ] **2.3** Define missing semantic tokens (e.g., surface-primary, surface-elevated, text-muted, border-subtle, accent-gold). Add to Tailwind config.
-- [ ] **2.4** Refactor any hardcoded values from Phase 1 to use the new tokens.
+- [x] **2.1** Audit existing Tailwind config. Document all defined tokens (colors, spacing, typography, radii, shadows).
+- [x] **2.2** Compare config tokens against Figma designs. Identify gaps — values used in Figma that don't have a token yet.
+- [x] **2.3** Define missing semantic tokens (e.g., surface-primary, surface-elevated, text-muted, border-subtle, accent-gold). Add to Tailwind config.
+- [x] **2.4** Refactor any hardcoded values from Phase 1 to use the new tokens.
 
 ---
 
@@ -131,7 +131,7 @@ These will come up as you build. Do not solve them now.
 ## Progress
 
 **Phase 1 (MVP Chat):** Done — chat loop working, tokens verified
-**Phase 2 (Token Audit):** ⬜ Not started
+**Phase 2 (Token Audit):** Done
 **Phase 3 (Sidebar Nav):** ⬜ Not started
 **Phase 4 (Detail Panel):** ⬜ Not started
 **Phase 5 (State):** ⬜ Not started

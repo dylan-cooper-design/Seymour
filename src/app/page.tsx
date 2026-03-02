@@ -653,7 +653,7 @@ export default function Home() {
           />
           {error && (
             <div
-              className="flex w-full items-center justify-between gap-4 border-t border-red-900/50 bg-red-950/50 px-6 py-2 text-sm text-red-400"
+              className="flex w-full items-center justify-between gap-4 border-t border-seymour-error-border/50 bg-seymour-error-bg/50 px-6 py-2 text-body-sm text-seymour-error-text"
               role="alert"
             >
               <span>{error}</span>
@@ -661,7 +661,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={handleRetry}
-                  className="rounded-md border border-red-400/40 px-2 py-1 text-xs text-red-200 transition hover:bg-red-900/30 focus:outline-none focus:ring-2 focus:ring-red-400/60"
+                  className="rounded-md border border-seymour-error-text/40 px-2 py-1 text-label text-seymour-error-text transition hover:bg-seymour-error-bg/30 focus:outline-none focus:ring-2 focus:ring-seymour-error-text/60"
                 >
                   Retry
                 </button>

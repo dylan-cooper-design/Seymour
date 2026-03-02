@@ -13,7 +13,10 @@ const config: Config = {
       },
       fontSize: {
         "caps-label": ["10px", { lineHeight: "1" }],
+        "label": ["12px", { lineHeight: "1" }],
+        "label-sm": ["14px", { lineHeight: "20px" }],
         "body-sm": ["14px", { lineHeight: "22px" }],
+        "header": ["20px", { lineHeight: "30px", letterSpacing: "-0.45px" }],
       },
       maxWidth: {
         "chat-content": "720px",
@@ -41,6 +44,11 @@ const config: Config = {
 
           // Accent
           accent: "#d4b774", // active / gold
+
+          // Error (semantic)
+          "error-bg": "#450a0a",
+          "error-border": "#b91c1c",
+          "error-text": "#f87171",
         },
       },
       width: {

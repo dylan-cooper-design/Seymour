@@ -37,7 +37,7 @@ export function MessageBubble({ role, text, state }: MessageBubbleProps) {
             </p>
           )}
           {statusText && (
-            <p className="mt-1 text-xs text-seymour-text/50">{statusText}</p>
+            <p className="mt-1 text-label text-seymour-text/50">{statusText}</p>
           )}
         </div>
       )}

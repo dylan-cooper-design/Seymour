@@ -1,184 +1,140 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
 import { clearAllStorage } from "@/lib/storage";
-import type { MilestoneStatus, NavGroup } from "@/types/navigation";
+import type { SidebarNavData } from "@/types/navigation";
+import { NavItem } from "@/components/ui/NavItem";
+import { SectionLabel } from "@/components/ui/SectionLabel";
+import { ProjectSwitcher } from "./ProjectSwitcher";
 
-const GOAL_THREAD_ID = "goal-definition";
+// ─── PlatformMenuItem ─────────────────────────────────────────────────────────
 
-type NavProps = {
-  projectName: string;
-  foundationLabel: string;
-  groups: NavGroup[];
+function PlatformMenuItem({
+  items,
+  activeNavItemId,
+  onSelectItem,
+}: {
+  items: SidebarNavData["platform"];
   activeNavItemId: string;
-  onSelectItem: (itemId: string) => void;
-  onToggleGroup: (groupId: string) => void;
-};
+  onSelectItem: (id: string) => void;
+}) {
+  return (
+    <div className="border-b border-seymour-border px-6 py-2">
+      <div className="mb-1">
+        <SectionLabel>Platform</SectionLabel>
+      </div>
+      {items.map((item) => (
+        <NavItem
+          key={item.id}
+          label={item.label}
+          isActive={item.id === activeNavItemId}
+          onClick={() => onSelectItem(item.id)}
+        />
+      ))}
+    </div>
+  );
+}
 
-function StatusDot({ status }: { status: MilestoneStatus }) {
-  if (status === "complete-decision") {
-    return <span className="size-2 rounded-full bg-[#e3e2e1]" aria-hidden="true" />;
-  }
+// ─── MilestoneGroup ───────────────────────────────────────────────────────────
 
-  if (status === "incomplete-action") {
+function MilestoneGroup({
+  milestones,
+  activeNavItemId,
+  onSelectItem,
+}: {
+  milestones: SidebarNavData["milestones"];
+  activeNavItemId: string;
+  onSelectItem: (id: string) => void;
+}) {
+  const hasMilestones = milestones.some((m) => m.children.length > 0);
+
+  if (!hasMilestones) {
     return (
-      <span
-        className="size-2 rotate-45 rounded-[1px] border border-[#e3e2e1]"
-        aria-hidden="true"
-      />
+      <div className="px-6 py-4">
+        <p className="text-label-sm text-seymour-text/70">
+          Set a goal to generate your plan.
+        </p>
+      </div>
     );
   }
 
   return (
-    <span
-      className="size-2 rounded-full border border-dashed border-[#e3e2e1]"
-      aria-hidden="true"
-    />
-  );
-}
-
-function SectionRow({
-  label,
-  isExpanded,
-  isDimmed = false,
-  onClick,
-}: {
-  label: string;
-  isExpanded: boolean;
-  isDimmed?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex h-12 w-full items-center gap-2 border-b border-[#302f2d] px-6 text-left ${
-        isDimmed ? "opacity-50" : "opacity-100"
-      }`}
-      aria-expanded={isExpanded}
-    >
-      <span className="flex-1 text-sm font-medium text-[#e3e2e1]">{label}</span>
-      <span className="text-lg leading-none text-[#e3e2e1]" aria-hidden="true">
-        {isExpanded ? "−" : "+"}
-      </span>
-    </button>
-  );
-}
-
-export function Nav({
-  projectName,
-  foundationLabel,
-  groups,
-  activeNavItemId,
-  onSelectItem,
-  onToggleGroup,
-}: NavProps) {
-  const hasMilestones = groups.some((group) => group.items.length > 0);
-
-  return (
-    <aside
-      className="sticky top-0 flex h-screen w-[240px] shrink-0 flex-col border-r border-[#302f2d] bg-[#141414]"
-      aria-label="Navigation"
-    >
-      <div className="flex items-center gap-2 border-b border-[#302f2d] px-6 pb-[17px] pt-4">
-        <div className="flex-1">
-          <p className="text-[10px] font-medium uppercase text-[#e3e2e1]/50">
-            Current Project
-          </p>
-          <p className="text-xs font-medium text-[#ffffff]">{projectName}</p>
-        </div>
-        <span className="text-sm text-[#e3e2e1]" aria-hidden="true">
-          ˅
-        </span>
+    <div className="flex flex-col py-2">
+      <div className="px-6 pb-1">
+        <SectionLabel>Milestones</SectionLabel>
       </div>
-
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-3 py-2">
-          <button
-            type="button"
-            onClick={() => onSelectItem(GOAL_THREAD_ID)}
-            className={`flex h-8 w-full items-center gap-2 rounded px-3 text-left transition-colors ${
-              activeNavItemId === GOAL_THREAD_ID ? "bg-[#302f2d]" : "hover:bg-[#232426]"
-            }`}
-            aria-current={activeNavItemId === GOAL_THREAD_ID ? "page" : undefined}
-          >
+      {milestones.map((milestone) => (
+        <div
+          key={milestone.id}
+          className={milestone.isDimmed ? "opacity-50" : "opacity-100"}
+        >
+          <div className="flex items-center gap-2 px-6 py-2">
             <span
-              className="inline-block size-4 shrink-0 rounded border border-[#e3e2e1]/70"
+              className="size-4 shrink-0 rounded-full border border-seymour-text/50"
               aria-hidden="true"
             />
-            <span
-              className={`text-sm font-medium ${
-                activeNavItemId === GOAL_THREAD_ID ? "text-[#d4b774]" : "text-[#e3e2e1]"
-              }`}
-            >
-              {foundationLabel}
+            <span className="flex-1 text-label-sm text-seymour-text">
+              {milestone.label}
             </span>
-          </button>
-        </div>
-
-        {!hasMilestones && (
-          <div className="px-6 py-4">
-            <p className="text-sm text-[#e3e2e1]/70">
-              Set a goal to generate your plan.
-            </p>
-          </div>
-        )}
-
-        {hasMilestones &&
-          groups.map((group) => (
-            <div key={group.id}>
-              <SectionRow
-                label={group.label}
-                isExpanded={group.isExpanded}
-                isDimmed={group.isDimmed}
-                onClick={() => onToggleGroup(group.id)}
+            {milestone.children.length > 0 && (
+              <ChevronRight
+                className="size-4 shrink-0 text-seymour-text/50"
+                aria-hidden="true"
               />
-              {group.isExpanded && (
-                <div className="border-b border-[#302f2d] px-4 py-2">
-                  {group.items.map((item) => {
-                    const isActive = item.id === activeNavItemId;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => onSelectItem(item.id)}
-                        className={`mb-1 flex w-full items-center gap-2 rounded px-2 py-1.5 text-left last:mb-0 ${
-                          isActive ? "bg-[#302f2d]" : "bg-transparent"
-                        }`}
-                        aria-current={isActive ? "page" : undefined}
-                      >
-                        <StatusDot status={item.status} />
-                        <span
-                          className={`flex-1 text-sm ${
-                            isActive ? "text-[#d4b774]" : "text-[#e3e2e1]"
-                          }`}
-                        >
-                          {item.label}
-                        </span>
-                        {item.decisions && item.decisions.length > 0 && (
-                          <span
-                            className="text-xs text-[#e3e2e1]/50"
-                            aria-label={`${item.decisions.length} decisions`}
-                          >
-                            {item.decisions.length}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+            )}
+          </div>
+          {milestone.children.map((child) => (
+            <div key={child.id} className="pl-8 pr-2">
+              <NavItem
+                label={child.label}
+                isActive={child.id === activeNavItemId}
+                onClick={() => onSelectItem(child.id)}
+              />
             </div>
           ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Nav ──────────────────────────────────────────────────────────────────────
+
+type NavProps = {
+  nav: SidebarNavData;
+  activeNavItemId: string;
+  onSelectItem: (itemId: string) => void;
+};
+
+export function Nav({ nav, activeNavItemId, onSelectItem }: NavProps) {
+  return (
+    <aside
+      className="sticky top-0 flex h-screen w-sidebar shrink-0 flex-col border-r border-seymour-border bg-seymour-bg"
+      aria-label="Navigation"
+    >
+      <ProjectSwitcher currentProject={nav.projectName} />
+
+      <div className="flex-1 overflow-y-auto">
+        <PlatformMenuItem
+          items={nav.platform}
+          activeNavItemId={activeNavItemId}
+          onSelectItem={onSelectItem}
+        />
+        <MilestoneGroup
+          milestones={nav.milestones}
+          activeNavItemId={activeNavItemId}
+          onSelectItem={onSelectItem}
+        />
       </div>
 
-      <div className="mt-auto border-t border-[#302f2d] p-4">
+      <div className="border-t border-seymour-border p-4">
         <button
           type="button"
           onClick={() => {
             clearAllStorage();
             window.location.reload();
           }}
-          className="w-full rounded border border-[#302f2d] px-3 py-2 text-xs text-[#e3e2e1]/70 transition hover:bg-[#232426] hover:text-[#e3e2e1]"
+          className="w-full rounded border border-seymour-border px-3 py-2 text-label text-seymour-text/70 transition hover:bg-seymour-surface-2 hover:text-seymour-text"
         >
           Reset App
         </button>

@@ -65,7 +65,7 @@ export function ProjectSwitcher({
         >
           <div className="min-w-0 flex-1">
             <SectionLabel>Current Project</SectionLabel>
-            <p className="truncate text-xs font-medium text-seymour-white">
+            <p className="truncate text-label font-medium text-seymour-white">
               {selectedName}
             </p>
           </div>
@@ -93,7 +93,7 @@ export function ProjectSwitcher({
             <DropdownMenu.Item
               key={project.id}
               onSelect={() => handleSelect(project)}
-              className="group flex h-8 cursor-pointer items-center gap-2 px-3 text-sm text-seymour-white outline-none data-[highlighted]:bg-seymour-surface-2"
+              className="group flex h-8 cursor-pointer items-center gap-2 px-3 text-label-sm text-seymour-white outline-none data-[highlighted]:bg-seymour-surface-2"
             >
               <FolderIcon
                 className="size-4 shrink-0 text-seymour-text/60 transition-all duration-200 group-data-[highlighted]:scale-110 group-data-[highlighted]:text-seymour-accent"
@@ -107,7 +107,7 @@ export function ProjectSwitcher({
 
           <DropdownMenu.Item
             onSelect={onNewProject}
-            className="group flex h-8 cursor-pointer items-center gap-2 px-3 text-sm text-seymour-text/60 outline-none transition-colors data-[highlighted]:bg-seymour-surface-2 data-[highlighted]:text-seymour-text"
+            className="group flex h-8 cursor-pointer items-center gap-2 px-3 text-label-sm text-seymour-text/60 outline-none transition-colors data-[highlighted]:bg-seymour-surface-2 data-[highlighted]:text-seymour-text"
           >
             <PlusIcon
               className="size-4 shrink-0 transition-all duration-200 group-data-[highlighted]:scale-110 group-data-[highlighted]:text-seymour-accent"

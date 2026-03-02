@@ -42,7 +42,7 @@ export const MessageList = forwardRef<HTMLDivElement, MessageListProps>(
             <button
               type="button"
               onClick={onStopGenerating}
-              className="rounded-full border border-seymour-border-subtle px-3 py-1 text-xs text-seymour-text/80 transition hover:border-seymour-accent hover:text-seymour-text focus:outline-none focus:ring-2 focus:ring-seymour-accent/60"
+              className="rounded-full border border-seymour-border-subtle px-3 py-1 text-label text-seymour-text/80 transition hover:border-seymour-accent hover:text-seymour-text focus:outline-none focus:ring-2 focus:ring-seymour-accent/60"
             >
               Stop generating
             </button>
