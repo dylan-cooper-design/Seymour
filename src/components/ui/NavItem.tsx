@@ -14,7 +14,7 @@ export function NavItem({ label, isActive = false, icon, onClick }: NavItemProps
     <button
       type="button"
       onClick={onClick}
-      className={`flex h-8 w-full items-center gap-2 rounded px-2 text-left transition-colors ${
+      className={`flex h-8 w-full items-center gap-2 rounded px-2 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-seymour-accent/60 ${
         isActive ? "bg-seymour-border" : "hover:bg-seymour-surface"
       }`}
       aria-current={isActive ? "page" : undefined}

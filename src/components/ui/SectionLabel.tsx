@@ -3,7 +3,7 @@
 
 export function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-caps-label font-medium uppercase tracking-wide text-seymour-text/50">
+    <p className="text-[10px] font-medium uppercase tracking-wide text-seymour-text/50">
       {children}
     </p>
   );

@@ -20,7 +20,7 @@ const config: Config = {
       },
       maxWidth: {
         "chat-content": "720px",
-        "message-list": "744px",
+        "message-list": "720px",
         "bubble": "85%",
       },
       minHeight: {
@@ -53,6 +53,7 @@ const config: Config = {
       },
       width: {
         sidebar: "240px",
+        "detail-panel": "400px",
       },
     },
   },

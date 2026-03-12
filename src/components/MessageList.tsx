@@ -21,7 +21,7 @@ export const MessageList = forwardRef<HTMLDivElement, MessageListProps>(
       <div
         ref={ref}
         onScroll={onScroll}
-        className="flex w-full max-w-message-list flex-1 flex-col items-start justify-start gap-6 overflow-y-auto px-0 pb-6 pt-16"
+        className="flex w-full max-w-message-list flex-1 flex-col gap-6 overflow-y-auto px-6 pb-8 pt-12"
         role="log"
         aria-live="polite"
       >

@@ -18,7 +18,7 @@ export function MessageBubble({ role, text, state }: MessageBubbleProps) {
       data-role={role}
     >
       {isUser ? (
-        <div className="max-w-bubble rounded-3xl border border-seymour-accent bg-seymour-border px-6 py-4 text-seymour-text">
+        <div className="max-w-bubble rounded border border-seymour-accent bg-seymour-border px-6 py-4 text-seymour-text">
           <p className="whitespace-pre-wrap text-right text-body-sm">
             {text}
           </p>
