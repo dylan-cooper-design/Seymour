@@ -4,9 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatComposer } from "@/components/ChatComposer";
 import { CHAT_GREETING } from "@/components/ChatEmptyState";
 import { MessageList } from "@/components/MessageList";
-import { MilestoneDetailPanel } from "@/components/MilestoneDetailPanel";
 import { Nav } from "@/components/nav/Nav";
+import { DetailPanel } from "@/components/detail/DetailPanel";
 import { getStorage, setStorage } from "@/lib/storage";
+import { MOCK_NAV_MODELS, SEYMOUR_NAV_MODEL } from "@/lib/mock-milestones";
+import type { Project } from "@/components/nav/ProjectSwitcher";
 import type {
   Decision,
   Goal,
@@ -14,6 +16,7 @@ import type {
   MilestoneStatus,
   NavModel,
   NavPatch,
+  SidebarNavData,
   ThreadMessage,
   ThreadsByNavItemId,
 } from "@/types/navigation";
@@ -23,47 +26,8 @@ const STREAM_IDLE_TIMEOUT_MS = 30_000;
 const AUTO_SCROLL_THRESHOLD_PX = 100;
 const GOAL_THREAD_ID = "goal-definition";
 
-const INITIAL_NAV_MODEL: NavModel = {
-  projectName: "AI Agent Workflow Designer",
-  foundationLabel: "Foundation",
-  groups: [
-    { id: "valuable", label: "Valuable", isExpanded: false, items: [] },
-    {
-      id: "usable",
-      label: "Usable",
-      isExpanded: false,
-      items: [],
-    },
-    {
-      id: "practical",
-      label: "Practical",
-      isExpanded: false,
-      isDimmed: true,
-      items: [],
-    },
-    {
-      id: "presentable",
-      label: "Presentable",
-      isExpanded: false,
-      isDimmed: true,
-      items: [],
-    },
-    {
-      id: "testable",
-      label: "Testable",
-      isExpanded: false,
-      isDimmed: true,
-      items: [],
-    },
-    {
-      id: "repeatable",
-      label: "Repeatable",
-      isExpanded: false,
-      isDimmed: true,
-      items: [],
-    },
-  ],
-};
+const DEFAULT_PROJECT_ID = "seymour";
+const INITIAL_NAV_MODEL: NavModel = SEYMOUR_NAV_MODEL;
 
 const INITIAL_ACTIVE_NAV_ITEM_ID = GOAL_THREAD_ID;
 
@@ -99,12 +63,18 @@ function normalizeThreadMessage(message: Partial<ThreadMessage>): ThreadMessage 
   };
 }
 
-function itemGreeting(label: string): string {
-  return `${CHAT_GREETING}\n\nCurrent focus: ${label}`;
+function milestoneEmptyState(label: string, objective?: string, isPlan?: boolean): string {
+  if (isPlan) {
+    return `Phase plan\n\nSeymour will expand this phase and walk you through the decisions here.`;
+  }
+  if (!objective) {
+    return `Ready to work on: ${label}\n\nAsk me anything to get started.`;
+  }
+  return `${label}\n\n${objective}\n\nWhat would you like to work on first?`;
 }
 
 function goalThreadGreeting(): string {
-  return `${CHAT_GREETING}\n\nTell me your goal, and I'll create a milestone plan to help you achieve it.`;
+  return `${CHAT_GREETING}\n\nTell me your goal, and I'll create a plan to help you achieve it.`;
 }
 
 function getAllItems(navModel: NavModel) {
@@ -117,6 +87,27 @@ function findItemById(navModel: NavModel, itemId: string) {
 
 function getFallbackActiveItemId(navModel: NavModel): string {
   return getAllItems(navModel)[0]?.id ?? INITIAL_ACTIVE_NAV_ITEM_ID;
+}
+
+function navToSidebarData(navModel: NavModel): SidebarNavData {
+  return {
+    projectName: navModel.projectName,
+    platform: [
+      { id: GOAL_THREAD_ID, label: navModel.foundationLabel },
+    ],
+    milestones: navModel.groups.map((group) => ({
+      id: group.id,
+      label: group.label,
+      isDimmed: group.isDimmed,
+      isExpanded: group.isExpanded,
+      children: group.items.map((item) => ({
+        id: item.id,
+        label: item.label,
+        status: item.status,
+        decisions: item.decisions,
+      })),
+    })),
+  };
 }
 
 function ensureThreads(
@@ -135,7 +126,11 @@ function ensureThreads(
   for (const item of getAllItems(navModel)) {
     validIds.add(item.id);
     if (!next[item.id] || next[item.id].length === 0) {
-      next[item.id] = [createMessage("assistant", itemGreeting(item.label), { state: "complete" })];
+      next[item.id] = [
+        createMessage("assistant", milestoneEmptyState(item.label, item.objective, item.id.endsWith("-plan")), {
+          state: "complete",
+        }),
+      ];
     }
   }
 
@@ -184,6 +179,52 @@ function applyNavPatch(navModel: NavModel, patch: NavPatch): NavModel {
 
   if (patch.setProjectName?.trim()) {
     nextModel = { ...nextModel, projectName: patch.setProjectName.trim() };
+  }
+
+  if (patch.setFoundationDetail) {
+    nextModel = { ...nextModel, foundationDetail: patch.setFoundationDetail };
+  }
+
+  if (patch.setGroups?.length) {
+    nextModel = {
+      ...nextModel,
+      groups: patch.setGroups.map((group) => ({
+        id: group.id,
+        label: group.label,
+        isExpanded: group.isExpanded ?? true,
+        isDimmed: group.isDimmed ?? false,
+        items: (group.items ?? [])
+          .map((item) => ({
+            id: item.id ?? createNavItemId(group.id, item.label),
+            label: item.label.trim(),
+            status: item.status ?? ("incomplete-decision" as const),
+            objective: item.objective,
+            decisions: item.decisions,
+            detail: item.detail,
+          }))
+          .filter((m) => m.label.length > 0),
+      })),
+    };
+  }
+
+  if (patch.updateItems?.length) {
+    nextModel = {
+      ...nextModel,
+      groups: nextModel.groups.map((group) => ({
+        ...group,
+        items: group.items.map((item) => {
+          const update = patch.updateItems?.find((u) => u.id === item.id);
+          if (!update) return item;
+          return {
+            ...item,
+            ...(update.status !== undefined && { status: update.status }),
+            ...(update.detail !== undefined && { detail: update.detail }),
+            ...(update.objective !== undefined && { objective: update.objective }),
+            ...(update.decisions !== undefined && { decisions: update.decisions }),
+          };
+        }),
+      })),
+    };
   }
 
   if (patch.clearAllItemsBeforeAdd) {
@@ -254,6 +295,11 @@ type StreamNavPatchEvent = {
   content: NavPatch;
 };
 
+type StreamSuggestionsEvent = {
+  type: "suggestions";
+  content: string[][];
+};
+
 type StreamDoneEvent = {
   type: "done";
 };
@@ -263,7 +309,7 @@ type StreamErrorEvent = {
   message: string;
 };
 
-type StreamEvent = StreamTextEvent | StreamNavPatchEvent | StreamDoneEvent | StreamErrorEvent;
+type StreamEvent = StreamTextEvent | StreamNavPatchEvent | StreamSuggestionsEvent | StreamDoneEvent | StreamErrorEvent;
 
 function parseSseEvents(chunk: string): { events: StreamEvent[]; remainder: string } {
   const rawEvents = chunk.split("\n\n");
@@ -292,6 +338,8 @@ export default function Home() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const isSendingRef = useRef(false);
   const stopRequestedRef = useRef(false);
+  const triggeredPlanItemsRef = useRef(new Set<string>());
+  const [selectedProjectId, setSelectedProjectId] = useState(DEFAULT_PROJECT_ID);
   const [navModel, setNavModel] = useState<NavModel>(INITIAL_NAV_MODEL);
   const [activeNavItemId, setActiveNavItemId] = useState(INITIAL_ACTIVE_NAV_ITEM_ID);
   const [threadsByNavItemId, setThreadsByNavItemId] = useState<ThreadsByNavItemId>(
@@ -304,15 +352,18 @@ export default function Home() {
   const [isHydrated, setIsHydrated] = useState(false);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [currentGoal, setCurrentGoal] = useState<Goal | null>(null);
+  const [suggestions, setSuggestions] = useState<string[][]>([]);
+
+  useEffect(() => {
+    document.body.style.pointerEvents = "";
+    return () => {
+      document.body.style.pointerEvents = "";
+    };
+  }, []);
 
   const messages = useMemo<ThreadMessage[]>(() => {
     return threadsByNavItemId[activeNavItemId] ?? [];
   }, [activeNavItemId, threadsByNavItemId]);
-
-  const activeNavItem = useMemo(
-    () => findItemById(navModel, activeNavItemId),
-    [navModel, activeNavItemId]
-  );
 
   const scrollToBottom = useCallback(() => {
     messagesRef.current?.scrollTo({
@@ -388,11 +439,15 @@ export default function Home() {
   );
 
   const sendMessage = useCallback(
-    async (overrideText?: string) => {
+    async (overrideText?: string, options?: { silent?: boolean }) => {
       const text = (overrideText ?? inputValue).trim();
       if (!text || isSendingRef.current) return;
 
+      const silent = options?.silent ?? false;
       const threadId = activeNavItemId;
+      const priorMessages = (threadsByNavItemId[threadId] ?? [])
+        .filter((m) => m.state === "complete" || m.state === undefined)
+        .map((m) => ({ role: m.role, text: m.text }));
       const userMessage = createMessage("user", text);
       const assistantMessage = createMessage("assistant", "", { state: "streaming" });
 
@@ -400,11 +455,16 @@ export default function Home() {
       stopRequestedRef.current = false;
       setIsSending(true);
       setError(undefined);
-      setRetryText(undefined);
-      setInputValue("");
+      if (!silent) {
+        setRetryText(undefined);
+        setInputValue("");
+      }
+      setSuggestions([]);
       setThreadsByNavItemId((prev) => ({
         ...prev,
-        [threadId]: [...(prev[threadId] ?? []), userMessage, assistantMessage],
+        [threadId]: silent
+          ? [...(prev[threadId] ?? []), assistantMessage]
+          : [...(prev[threadId] ?? []), userMessage, assistantMessage],
       }));
 
       const controller = new AbortController();
@@ -426,7 +486,7 @@ export default function Home() {
       };
 
       const markErrorWithRetry = (message: string) => {
-        setRetryText(text);
+        if (!silent) setRetryText(text);
         setError(message);
       };
 
@@ -438,6 +498,7 @@ export default function Home() {
             message: text,
             navModel,
             activeNavItemId: threadId,
+            threadMessages: priorMessages,
           }),
           signal: controller.signal,
         });
@@ -488,7 +549,7 @@ export default function Home() {
 
             if (event.type === "nav_patch") {
               const patch = event.content;
-              if (patch.addMilestones?.length && patch.setProjectName?.trim()) {
+              if ((patch.addMilestones?.length || patch.setGroups?.length) && patch.setProjectName?.trim()) {
                 setCurrentGoal({
                   id: crypto.randomUUID(),
                   text: patch.setProjectName.trim(),
@@ -504,15 +565,15 @@ export default function Home() {
                   findItemById(nextModel, patch.setActiveNavItemId)
                 ) {
                   setActiveNavItemId(patch.setActiveNavItemId);
-                } else if (threadId === GOAL_THREAD_ID) {
-                  const firstMilestoneId = getAllItems(nextModel)[0]?.id;
-                  if (firstMilestoneId) {
-                    setActiveNavItemId(firstMilestoneId);
-                  }
                 }
 
                 return nextModel;
               });
+              continue;
+            }
+
+            if (event.type === "suggestions") {
+              setSuggestions(event.content);
               continue;
             }
 
@@ -566,8 +627,24 @@ export default function Home() {
         setIsSending(false);
       }
     },
-    [activeNavItemId, finalizeAssistantMessage, inputValue, navModel, updateAssistantMessage]
+    [activeNavItemId, finalizeAssistantMessage, inputValue, navModel, threadsByNavItemId, updateAssistantMessage]
   );
+
+  // Auto-trigger Seymour when entering a fresh Plan thread
+  const sendMessageRef = useRef(sendMessage);
+  useEffect(() => {
+    sendMessageRef.current = sendMessage;
+  }, [sendMessage]);
+
+  useEffect(() => {
+    if (!isHydrated || isSending) return;
+    if (!activeNavItemId.endsWith("-plan")) return;
+    if (triggeredPlanItemsRef.current.has(activeNavItemId)) return;
+    const thread = threadsByNavItemId[activeNavItemId] ?? [];
+    if (thread.length !== 1 || thread[0].role !== "assistant") return;
+    triggeredPlanItemsRef.current.add(activeNavItemId);
+    void sendMessageRef.current("[auto-start: phase entry]", { silent: true });
+  }, [activeNavItemId, isHydrated, isSending, threadsByNavItemId]);
 
   const handleSelectItem = useCallback((itemId: string) => {
     setActiveNavItemId(itemId);
@@ -576,27 +653,15 @@ export default function Home() {
     setIsNearBottom(true);
   }, []);
 
-  const handleToggleDecision = useCallback((milestoneId: string, decisionId: string) => {
-    setNavModel((prev) => {
-      const next = {
-        ...prev,
-        groups: prev.groups.map((group) => ({
-          ...group,
-          items: group.items.map((item) => {
-            if (item.id !== milestoneId || !item.decisions) return item;
-            return {
-              ...item,
-              decisions: item.decisions.map((d) =>
-                d.id === decisionId
-                  ? { ...d, status: d.status === "todo" ? ("done" as const) : ("todo" as const) }
-                  : d
-              ),
-            };
-          }),
-        })),
-      };
-      return next;
-    });
+  const handleSelectProject = useCallback((project: Project) => {
+    const newNavModel = MOCK_NAV_MODELS[project.id] ?? SEYMOUR_NAV_MODEL;
+    setSelectedProjectId(project.id);
+    setNavModel(newNavModel);
+    setThreadsByNavItemId(ensureThreads({}, newNavModel));
+    setActiveNavItemId(GOAL_THREAD_ID);
+    setCurrentGoal(null);
+    setError(undefined);
+    setRetryText(undefined);
   }, []);
 
   const handleStopGenerating = useCallback(() => {
@@ -617,18 +682,6 @@ export default function Home() {
     setIsNearBottom(distanceFromBottom <= AUTO_SCROLL_THRESHOLD_PX);
   }, []);
 
-  const handleToggleGroup = useCallback((groupId: string) => {
-    setNavModel((prev) => ({
-      ...prev,
-      groups: prev.groups.map((group) => {
-        if (group.id === groupId) {
-          return { ...group, isExpanded: !group.isExpanded, isDimmed: false };
-        }
-        return { ...group, isExpanded: false };
-      }),
-    }));
-  }, []);
-
   useEffect(() => {
     if (isNearBottom) {
       scrollToBottom();
@@ -636,30 +689,32 @@ export default function Home() {
   }, [activeNavItemId, isNearBottom, messages, scrollToBottom]);
 
   return (
-    <div className="flex min-h-screen bg-[#1c1d1f]">
+    <div className="flex h-screen w-screen overflow-hidden bg-seymour-canvas">
       <Nav
-        projectName={navModel.projectName}
-        foundationLabel={navModel.foundationLabel}
-        groups={navModel.groups}
+        nav={navToSidebarData(navModel)}
         activeNavItemId={activeNavItemId}
         onSelectItem={handleSelectItem}
-        onToggleGroup={handleToggleGroup}
+        onSelectProject={handleSelectProject}
       />
+      <aside
+        className="sticky top-0 h-screen w-[400px] min-w-[400px] max-w-[400px] overflow-hidden border-r border-seymour-border bg-seymour-bg"
+        aria-label="Detail panel"
+      >
+        <DetailPanel
+          activeNavItemId={activeNavItemId}
+          navModel={navModel}
+          selectedItem={findItemById(navModel, activeNavItemId)}
+          currentGoal={currentGoal}
+        />
+      </aside>
       <main
-        className="flex min-h-screen w-[872px] min-w-[872px] flex-col bg-[#1c1d1f]"
+        className="flex h-screen flex-1 flex-col overflow-hidden bg-seymour-canvas"
         role="main"
       >
         <section
           className="flex flex-1 flex-col items-center overflow-hidden"
           aria-label="Chat"
         >
-          {activeNavItem &&
-            activeNavItemId !== GOAL_THREAD_ID && (
-              <MilestoneDetailPanel
-                milestone={activeNavItem}
-                onToggleDecision={handleToggleDecision}
-              />
-            )}
           <MessageList
             messages={messages}
             isStreaming={isStreaming}
@@ -669,7 +724,7 @@ export default function Home() {
           />
           {error && (
             <div
-              className="flex w-full items-center justify-between gap-4 border-t border-red-900/50 bg-red-950/50 px-6 py-2 text-sm text-red-400"
+              className="flex w-full items-center justify-between gap-4 border-t border-seymour-error-border/50 bg-seymour-error-bg/50 px-6 py-2 text-body-sm text-seymour-error-text"
               role="alert"
             >
               <span>{error}</span>
@@ -677,7 +732,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={handleRetry}
-                  className="rounded-md border border-red-400/40 px-2 py-1 text-xs text-red-200 transition hover:bg-red-900/30 focus:outline-none focus:ring-2 focus:ring-red-400/60"
+                  className="rounded-md border border-seymour-error-text/40 px-2 py-1 text-label text-seymour-error-text transition hover:bg-seymour-error-bg/30 focus:outline-none focus:ring-2 focus:ring-seymour-error-text/60"
                 >
                   Retry
                 </button>
@@ -685,12 +740,15 @@ export default function Home() {
             </div>
           )}
         </section>
-        <ChatComposer
-          value={inputValue}
-          onChange={setInputValue}
-          onSend={sendMessage}
-          disabled={isSending}
-        />
+        <div className="shrink-0">
+          <ChatComposer
+            value={inputValue}
+            onChange={setInputValue}
+            onSend={sendMessage}
+            disabled={isSending}
+            suggestions={suggestions}
+          />
+        </div>
       </main>
     </div>
   );

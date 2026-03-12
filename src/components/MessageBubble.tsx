@@ -18,26 +18,26 @@ export function MessageBubble({ role, text, state }: MessageBubbleProps) {
       data-role={role}
     >
       {isUser ? (
-        <div className="max-w-[85%] rounded-[24px] border border-[#d4b774] bg-[#302f2d] px-6 py-4 text-[#e3e2e1]">
-          <p className="whitespace-pre-wrap text-right text-sm leading-[22px]">
+        <div className="max-w-bubble rounded border border-seymour-accent bg-seymour-border px-6 py-4 text-seymour-text">
+          <p className="whitespace-pre-wrap text-right text-body-sm">
             {text}
           </p>
         </div>
       ) : (
         <div className="max-w-full">
           {showTypingIndicator ? (
-            <div className="flex items-center gap-1 pt-1 text-[#e3e2e180]" aria-label="Seymour is typing">
+            <div className="flex items-center gap-1 pt-1 text-seymour-text/50" aria-label="Seymour is typing">
               <span className="size-1.5 animate-pulse rounded-full bg-current [animation-delay:0ms]" />
               <span className="size-1.5 animate-pulse rounded-full bg-current [animation-delay:150ms]" />
               <span className="size-1.5 animate-pulse rounded-full bg-current [animation-delay:300ms]" />
             </div>
           ) : (
-            <p className="max-w-full whitespace-pre-wrap text-sm leading-[22px] text-[#e3e2e1]">
+            <p className="max-w-full whitespace-pre-wrap text-body-sm text-seymour-text">
               {text}
             </p>
           )}
           {statusText && (
-            <p className="mt-1 text-xs text-[#e3e2e180]">{statusText}</p>
+            <p className="mt-1 text-label text-seymour-text/50">{statusText}</p>
           )}
         </div>
       )}
