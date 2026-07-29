@@ -1,4 +1,4 @@
-# Project template restructure: drop Screens/Handoff, add Best practices
+# Project template restructure: drop Screens/Handoff, add Best practices, rename Design system to Patterns
 
 ## Context
 
@@ -32,10 +32,13 @@ reorderable):
 3. **Best practices** _(new)_ — industry research on established ways to
    solve the kind of problem this project is tackling. Empty at project
    start, guidance note only. Entries here can reference specific
-   components/tokens already defined in Design system (e.g. "best practice
+   components/tokens already defined in Patterns (e.g. "best practice
    for confirmation flows, given our existing Modal component") — this is a
    content convention, not a structural link enforced by the data model.
-4. **Design system** — unchanged. Styles + Components sub-folders.
+4. **Patterns** _(renamed from Design system)_ — unchanged content/structure
+   (Styles + Components sub-folders). Renamed because "Design system" read as
+   the whole shared library rather than this project's slice of it — see
+   "Sharing model" below.
 
 **Removed:** `Flows & IA`, `Screens`, `Handoff` — no longer seeded by the
 template.
@@ -48,18 +51,30 @@ same principle already used for Foundations' workstreams. If a project
 genuinely branches into a second distinct flow, a second such folder is added
 alongside the first at the top level.
 
-### Sharing model for Best practices
+### Sharing model for Best practices and Patterns
 
-Same relationship as Design system has today: **conceptually** meant to be
-shared across projects, but **not actually built that way yet** — no
-cross-project storage/library mechanism exists in this codebase
-(`src/lib/storage`, `src/types/project.ts`). Confirmed by inspection before
-writing this spec. Both Best practices and Design system today are just
-locked, per-project folders seeded empty. Building real cross-project
-sharing is out of scope for this change — it would need a separate
-library/workspace-level store and project↔library linking, and should be
-designed as its own piece of work when both entities are ready to actually
-share.
+Same relationship for both: **conceptually** meant to be shared across
+projects, but **not actually built that way yet** — no cross-project
+storage/library mechanism exists in this codebase (`src/lib/storage`,
+`src/types/project.ts`). Confirmed by inspection before writing this spec —
+today there's exactly one `ProjectTree` per user (`user_state` table, one
+row per `user_id`), so there's no second project to share with yet. Both
+folders today are just locked, per-project folders seeded empty. Building
+real cross-project sharing is out of scope for this change — it would need
+a separate library/workspace-level store and project↔library linking, and
+should be designed as its own piece of work once multi-project support
+actually exists.
+
+**Requirement for that future work (recorded now, not built now):** when a
+project does pull from a shared Patterns/Best practices library, it must
+surface only the subset actually relevant to / used by that project — never
+the whole library inline in the project's tree. Dylan's concern: a shared
+library that accumulates real content (hundreds of components, dozens of
+patterns) would otherwise mean every new project either starts by copying
+all of it in, or the same content re-appears duplicated across every
+project's tree. The folder rename to "Patterns" (see above) exists partly
+to make this framing explicit — the folder is this project's slice, not the
+library itself.
 
 ## Code changes
 
@@ -71,8 +86,11 @@ share.
   `bestPractices` note describing what goes there and the DS-reference
   convention.
 - `createProductDesignTemplate`: `roots` becomes `[Foundations, Research,
-Best practices, Design system]` (4 folders, down from 6). Best practices
-  folder: locked, empty, note only — same shape as Research.
+Best practices, Patterns]` (4 folders, down from 6). Best practices folder:
+  locked, empty, note only — same shape as Research. The former "Design
+  system" folder is renamed to "Patterns" (`TEMPLATE_KEYS.patterns`,
+  `TEMPLATE_KEYS.styles`/`.components` re-keyed under it) — same content and
+  structure, new label only.
 - `INITIAL_TEMPLATE_KEY` and `initialExpandedTemplateKeys` are unaffected
   (still `problemStatement` / `foundations`).
 
@@ -94,8 +112,9 @@ No other files reference the removed keys (`screens`, `handoff`,
 
 - Nav UI grouping/visual separation for dynamic work-area folders — revisit
   once a project typically has more than one.
-- Cross-project sharing infrastructure for Design system and/or Best
-  practices — no library/workspace data model exists; needs its own design.
+- Cross-project sharing infrastructure for Patterns and/or Best practices —
+  no library/workspace data model exists; needs its own design. Must satisfy
+  the "relevant subset only" requirement above when it's built.
 - Cross-referencing between two flow folders in the rare multi-flow project
   — no reference mechanism exists in the data model today.
 - `src/agents/first/prompt.ts` — doesn't name Screens/Handoff/Flows & IA
