@@ -24,9 +24,9 @@ export const TEMPLATE_KEYS = {
   constraints: "foundations.constraints",
   research: "research",
   bestPractices: "best-practices",
-  designSystem: "design-system",
-  styles: "design-system.styles",
-  components: "design-system.components",
+  patterns: "patterns",
+  styles: "patterns.styles",
+  components: "patterns.components",
 } as const;
 
 /** Where the user lands on a brand-new project. */
@@ -40,8 +40,8 @@ const FOLDER_NOTES = {
   research:
     "**What goes here:** competitive teardowns, interview synthesis, usability findings, analytics reads.\n\nStart a workstream for each study or question you're chasing.",
   bestPractices:
-    "**What goes here:** established patterns for problems like this one — how others have solved onboarding, checkout, empty states, and similar. Distilled from research, not raw findings.\n\nWhere relevant, ground a pattern in what's already in Design system — e.g. best practice for confirmation flows, given the existing Modal component.",
-  designSystem:
+    "**What goes here:** established patterns for problems like this one — how others have solved onboarding, checkout, empty states, and similar. Distilled from research, not raw findings.\n\nWhere relevant, ground a pattern in what's already in Patterns — e.g. best practice for confirmation flows, given the existing Modal component.",
+  patterns:
     "**What goes here:** the foundations everything else is built from.\n\n*Styles* covers color, type, spacing, elevation and motion. *Components* covers the reusable pieces.",
   styles:
     "**What goes here:** color, typography, spacing, elevation, motion — one workstream per token family.",
@@ -86,10 +86,10 @@ export function createProductDesignTemplate(opts: { projectName?: string } = {})
       note: FOLDER_NOTES.bestPractices,
     }),
 
-    createFolder("Design system", {
-      templateKey: TEMPLATE_KEYS.designSystem,
+    createFolder("Patterns", {
+      templateKey: TEMPLATE_KEYS.patterns,
       locked: true,
-      note: FOLDER_NOTES.designSystem,
+      note: FOLDER_NOTES.patterns,
       children: [
         createFolder("Styles", {
           templateKey: TEMPLATE_KEYS.styles,

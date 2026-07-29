@@ -34,7 +34,7 @@ describe("createProductDesignTemplate", () => {
       "Foundations",
       "Research",
       "Best practices",
-      "Design system",
+      "Patterns",
     ]);
   });
 
@@ -69,10 +69,10 @@ describe("createProductDesignTemplate", () => {
     expect(foundations?.children.every((c) => c.kind === "workstream")).toBe(true);
   });
 
-  it("gives Design system its Styles and Components folders", () => {
-    const ds = findByTemplateKey(createProductDesignTemplate().roots, TEMPLATE_KEYS.designSystem);
-    expect(ds?.children.map((c) => c.label)).toEqual(["Styles", "Components"]);
-    expect(ds?.children.every((c) => c.kind === "folder")).toBe(true);
+  it("gives Patterns its Styles and Components folders", () => {
+    const patterns = findByTemplateKey(createProductDesignTemplate().roots, TEMPLATE_KEYS.patterns);
+    expect(patterns?.children.map((c) => c.label)).toEqual(["Styles", "Components"]);
+    expect(patterns?.children.every((c) => c.kind === "folder")).toBe(true);
   });
 
   it("resolves every declared template key", () => {
@@ -142,7 +142,7 @@ describe("createProductDesignTemplate", () => {
     expect(roots.every((n) => derivedStatus(n) === "empty")).toBe(true);
   });
 
-  it("supports depth 4 out of the box (design-system > styles is two levels in)", () => {
+  it("supports depth 4 out of the box (patterns > styles is two levels in)", () => {
     const { roots } = createProductDesignTemplate();
     const styles = findByTemplateKey(roots, TEMPLATE_KEYS.styles);
     expect(findPath(roots, styles!.id)).toHaveLength(2);
