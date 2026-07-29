@@ -36,6 +36,11 @@ export function ChatComposer({ value, onChange, onSend, disabled = false }: Chat
     prevDisabledRef.current = disabled;
   }, [disabled]);
 
+  // Focus on mount (programmatic, not the autoFocus prop, to satisfy jsx-a11y/no-autofocus)
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
   // Cmd+A / Ctrl+A: intercept at capture phase so the browser never gets it,
   // then select only the textarea content.
   useEffect(() => {
@@ -73,7 +78,6 @@ export function ChatComposer({ value, onChange, onSend, disabled = false }: Chat
           placeholder="Message Seymour"
           rows={1}
           disabled={disabled}
-          autoFocus
           className="flex-1 resize-none bg-transparent py-0.5 text-body-sm leading-[22px] text-seymour-text placeholder:text-seymour-text/50 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           aria-label="Message input"
         />

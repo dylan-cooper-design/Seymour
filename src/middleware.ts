@@ -1,6 +1,6 @@
-import { type NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
-export async function middleware(_request: NextRequest) {
+export async function middleware() {
   // Sign-in gate is disabled for demo purposes. Restore the Supabase
   // session check here to require login again.
   return NextResponse.next();
