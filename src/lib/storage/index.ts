@@ -1,8 +1,2 @@
-export {
-  getStorage,
-  setStorage,
-  removeStorage,
-  clearAllStorage,
-  storageKeys,
-} from "./client";
-export type { StorageKey } from "./keys";
+export { loadUserState, saveUserState, clearUserState } from "./client";
+export type { UserState } from "./client";

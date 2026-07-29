@@ -7,7 +7,6 @@ type ChatComposerProps = {
   onChange: (value: string) => void;
   onSend: (overrideText?: string) => void;
   disabled?: boolean;
-  suggestions?: string[][];
 };
 
 const MAX_LINES = 6;
@@ -15,25 +14,8 @@ const LINE_HEIGHT = 22;
 const MIN_HEIGHT = LINE_HEIGHT;
 const MAX_HEIGHT = MAX_LINES * LINE_HEIGHT;
 
-const SHORTCUT_KEYS = "abcdefghijklmnopqrstuvwxyz";
-
-export function ChatComposer({
-  value,
-  onChange,
-  onSend,
-  disabled = false,
-  suggestions = [],
-}: ChatComposerProps) {
+export function ChatComposer({ value, onChange, onSend, disabled = false }: ChatComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Derive which suggestion group to answer next based on numbered answers already in the input.
-  // When the user deletes a numbered answer, groupIdx automatically steps back.
-  const groupIdx = suggestions.length > 1
-    ? Math.min(
-        value.split('\n').filter(line => /^\d+\. /.test(line)).length,
-        suggestions.length
-      )
-    : 0;
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -75,29 +57,6 @@ export function ChatComposer({
       if (!disabled && value.trim()) {
         onSend();
       }
-      return;
-    }
-
-    // Suggestion shortcut: single letter, no modifiers
-    const currentGroup = suggestions[groupIdx];
-    if (
-      currentGroup &&
-      currentGroup.length > 0 &&
-      !disabled &&
-      !e.metaKey &&
-      !e.ctrlKey &&
-      !e.altKey &&
-      e.key.length === 1
-    ) {
-      const idx = SHORTCUT_KEYS.indexOf(e.key.toLowerCase());
-      if (idx >= 0 && idx < currentGroup.length) {
-        e.preventDefault();
-        const answer = currentGroup[idx];
-        const numberedAnswer = suggestions.length > 1 ? `${groupIdx + 1}. ${answer}` : answer;
-        const next = value.trim() ? `${value.trim()}\n${numberedAnswer}` : numberedAnswer;
-        onChange(next);
-        textareaRef.current?.focus();
-      }
     }
   };
 
@@ -125,7 +84,16 @@ export function ChatComposer({
           className={`mb-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-seymour-text text-seymour-surface-2 transition-opacity focus:outline-none focus:ring-2 focus:ring-seymour-accent disabled:cursor-not-allowed ${canSend ? "opacity-100" : "opacity-50"}`}
           aria-label="Send message"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M12 19V5M5 12l7-7 7 7" />
           </svg>
         </button>

@@ -126,6 +126,7 @@ Use existing POST endpoint:
 ### Frontend state
 
 Minimum state shape (keep in component state, no external store needed):
+
 ```typescript
 messages: Array<{ role: "user" | "assistant"; text: string }>
 inputValue: string
@@ -187,14 +188,16 @@ All components must use design tokens only. See "Design system rules" section.
 
 ## Files and locations
 
-| File | Purpose |
-|---|---|
-| `src/app/page.tsx` | Main page, composes layout + chat |
-| `src/components/` | Reusable UI components |
-| `src/agents/first/prompt.ts` | Seymour system prompt |
-| `src/app/api/agents/first/route.ts` | API route (already exists) |
-| `docs/figma.md` | Figma node IDs and design references |
-| `tailwind.config.ts` | Design tokens (colors, spacing, typography) |
+
+| File                                | Purpose                                     |
+| ----------------------------------- | ------------------------------------------- |
+| `src/app/page.tsx`                  | Main page, composes layout + chat           |
+| `src/components/`                   | Reusable UI components                      |
+| `src/agents/first/prompt.ts`        | Seymour system prompt                       |
+| `src/app/api/agents/first/route.ts` | API route (already exists)                  |
+| `docs/figma.md`                     | Figma node IDs and design references        |
+| `tailwind.config.ts`                | Design tokens (colors, spacing, typography) |
+
 
 ## Implementation plan (MVP)
 
@@ -209,19 +212,19 @@ All components must use design tokens only. See "Design system rules" section.
 
 ## Acceptance tests (manual)
 
-- [ ] Empty state shows Seymour's conversation starter before any user input.
-- [ ] Typing a message and pressing Enter sends it and renders the user message immediately.
-- [ ] User messages render as right-aligned cards with accent border, elevated background, rounded corners, and centered text.
-- [ ] Seymour messages render as left-aligned plain text with no bubble.
-- [ ] Send button is disabled while waiting for a response.
-- [ ] Claude's response renders as an assistant message from the API.
-- [ ] Auto-scroll keeps the latest message visible.
-- [ ] Shift+Enter inserts a newline without sending.
-- [ ] Errors show cleanly when endpoint fails and retry is possible.
-- [ ] Layout matches the Figma frame structure and dark theme.
-- [ ] Sidebar is visible and styled but non-interactive.
-- [ ] All colors, spacing, typography, and radii use Tailwind config tokens. No hardcoded values anywhere.
-- [ ] Works locally after `pnpm dev`.
+- Empty state shows Seymour's conversation starter before any user input.
+- Typing a message and pressing Enter sends it and renders the user message immediately.
+- User messages render as right-aligned cards with accent border, elevated background, rounded corners, and centered text.
+- Seymour messages render as left-aligned plain text with no bubble.
+- Send button is disabled while waiting for a response.
+- Claude's response renders as an assistant message from the API.
+- Auto-scroll keeps the latest message visible.
+- Shift+Enter inserts a newline without sending.
+- Errors show cleanly when endpoint fails and retry is possible.
+- Layout matches the Figma frame structure and dark theme.
+- Sidebar is visible and styled but non-interactive.
+- All colors, spacing, typography, and radii use Tailwind config tokens. No hardcoded values anywhere.
+- Works locally after `pnpm dev`.
 
 ## What comes after MVP
 
@@ -234,3 +237,4 @@ Once the chat foundation is working, the next phases (see ROADMAP.md) are:
 5. State management connecting all three panels
 6. AI integration for milestone generation and structured responses
 7. Polish, loading states, keyboard navigation
+

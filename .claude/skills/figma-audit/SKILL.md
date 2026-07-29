@@ -1,8 +1,5 @@
 # Skill: figma-audit
 
-## Model
-Use **sonnet** for this skill.
-
 ## When to use
 Trigger this skill when the user says something like:
 - "compare my code against Figma"

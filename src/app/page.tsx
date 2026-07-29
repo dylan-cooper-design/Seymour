@@ -2,34 +2,34 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatComposer } from "@/components/ChatComposer";
-import { CHAT_GREETING } from "@/components/ChatEmptyState";
+import { ChoiceCard } from "@/components/ChoiceCard";
+import type { SuggestionGroup } from "@/agents/first/parse-agent-reply";
 import { MessageList } from "@/components/MessageList";
 import { Nav } from "@/components/nav/Nav";
 import { DetailPanel } from "@/components/detail/DetailPanel";
-import { getStorage, setStorage } from "@/lib/storage";
-import { MOCK_NAV_MODELS, SEYMOUR_NAV_MODEL } from "@/lib/mock-milestones";
-import type { Project } from "@/components/nav/ProjectSwitcher";
-import type {
-  Decision,
-  Goal,
-  MessageState,
-  MilestoneStatus,
-  NavModel,
-  NavPatch,
-  SidebarNavData,
-  ThreadMessage,
-  ThreadsByNavItemId,
-} from "@/types/navigation";
+import { useTreeExpansion } from "@/hooks/useTreeExpansion";
+import { loadUserState, saveUserState } from "@/lib/storage";
+import {
+  findByTemplateKey,
+  findNode,
+  nearestSelfOrAncestorOfKind,
+  updateNode,
+  walk,
+} from "@/lib/tree/nodes";
+import { touch } from "@/lib/tree/create";
+import {
+  INITIAL_TEMPLATE_KEY,
+  TEMPLATE_KEYS,
+  createProductDesignTemplate,
+} from "@/lib/templates/product-design";
+import { SCHEMA_VERSION, type ActionNode, type ProjectTree } from "@/types/project";
+import type { MessageState, ThreadMessage, ThreadsByNodeId } from "@/types/navigation";
 
 const API_TIMEOUT_MS = 30_000;
 const STREAM_IDLE_TIMEOUT_MS = 30_000;
 const AUTO_SCROLL_THRESHOLD_PX = 100;
-const GOAL_THREAD_ID = "goal-definition";
 
-const DEFAULT_PROJECT_ID = "seymour";
-const INITIAL_NAV_MODEL: NavModel = SEYMOUR_NAV_MODEL;
-
-const INITIAL_ACTIVE_NAV_ITEM_ID = GOAL_THREAD_ID;
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
 function createMessageId(): string {
   return crypto.randomUUID();
@@ -38,11 +38,7 @@ function createMessageId(): string {
 function createMessage(
   role: ThreadMessage["role"],
   text: string,
-  options?: {
-    id?: string;
-    state?: MessageState;
-    timestamp?: number;
-  }
+  options?: { id?: string; state?: MessageState; timestamp?: number }
 ): ThreadMessage {
   return {
     id: options?.id ?? createMessageId(),
@@ -63,253 +59,89 @@ function normalizeThreadMessage(message: Partial<ThreadMessage>): ThreadMessage 
   };
 }
 
-function milestoneEmptyState(label: string, objective?: string, isPlan?: boolean): string {
-  if (isPlan) {
-    return `Phase plan\n\nSeymour will expand this phase and walk you through the decisions here.`;
+function normalizeThreads(threads: ThreadsByNodeId): ThreadsByNodeId {
+  const normalized: ThreadsByNodeId = {};
+  for (const [threadId, messages] of Object.entries(threads)) {
+    normalized[threadId] = (messages ?? []).map(normalizeThreadMessage);
   }
-  if (!objective) {
-    return `Ready to work on: ${label}\n\nAsk me anything to get started.`;
-  }
-  return `${label}\n\n${objective}\n\nWhat would you like to work on first?`;
+  return normalized;
 }
 
-function goalThreadGreeting(): string {
-  return `${CHAT_GREETING}\n\nTell me your goal, and I'll create a plan to help you achieve it.`;
+function workstreamGreeting(label: string, objective?: string): string {
+  return objective ? `**${label}**\n\n${objective}` : `**${label}**`;
 }
 
-function getAllItems(navModel: NavModel) {
-  return navModel.groups.flatMap((group) => group.items);
-}
-
-function findItemById(navModel: NavModel, itemId: string) {
-  return getAllItems(navModel).find((item) => item.id === itemId);
-}
-
-function getFallbackActiveItemId(navModel: NavModel): string {
-  return getAllItems(navModel)[0]?.id ?? INITIAL_ACTIVE_NAV_ITEM_ID;
-}
-
-function navToSidebarData(navModel: NavModel): SidebarNavData {
-  return {
-    projectName: navModel.projectName,
-    platform: [
-      { id: GOAL_THREAD_ID, label: navModel.foundationLabel },
-    ],
-    milestones: navModel.groups.map((group) => ({
-      id: group.id,
-      label: group.label,
-      isDimmed: group.isDimmed,
-      isExpanded: group.isExpanded,
-      children: group.items.map((item) => ({
-        id: item.id,
-        label: item.label,
-        status: item.status,
-        decisions: item.decisions,
-      })),
-    })),
-  };
-}
-
-function ensureThreads(
-  threads: ThreadsByNavItemId,
-  navModel: NavModel
-): ThreadsByNavItemId {
-  const next: ThreadsByNavItemId = { ...threads };
+/**
+ * One thread per workstream — never per folder, decision, or action.
+ *
+ * Clicking a decision keeps you in its parent workstream's conversation, because
+ * that IS the conversation about that decision. Giving decisions their own
+ * threads would shatter one discussion into stubs that can't be merged back.
+ */
+function ensureThreads(threads: ThreadsByNodeId, tree: ProjectTree): ThreadsByNodeId {
+  const next: ThreadsByNodeId = { ...threads };
   const validIds = new Set<string>();
-  validIds.add(GOAL_THREAD_ID);
-  if (!next[GOAL_THREAD_ID] || next[GOAL_THREAD_ID].length === 0) {
-    next[GOAL_THREAD_ID] = [
-      createMessage("assistant", goalThreadGreeting(), { state: "complete" }),
-    ];
-  }
 
-  for (const item of getAllItems(navModel)) {
-    validIds.add(item.id);
-    if (!next[item.id] || next[item.id].length === 0) {
-      next[item.id] = [
-        createMessage("assistant", milestoneEmptyState(item.label, item.objective, item.id.endsWith("-plan")), {
+  walk(tree.roots, (node) => {
+    if (node.kind !== "workstream") return;
+    validIds.add(node.id);
+    if (!next[node.id] || next[node.id].length === 0) {
+      next[node.id] = [
+        createMessage("assistant", workstreamGreeting(node.label, node.objective), {
           state: "complete",
         }),
       ];
     }
-  }
+  });
 
   for (const key of Object.keys(next)) {
-    if (!validIds.has(key)) {
-      delete next[key];
-    }
+    if (!validIds.has(key)) delete next[key];
   }
 
   return next;
 }
 
-function normalizeThreads(threads: ThreadsByNavItemId): ThreadsByNavItemId {
-  const normalized: ThreadsByNavItemId = {};
-  for (const [threadId, messages] of Object.entries(threads)) {
-    normalized[threadId] = (messages ?? []).map((message) =>
-      normalizeThreadMessage(message)
-    );
-  }
-  return normalized;
+/**
+ * A stored blob is usable only if it parses as a tree at the CURRENT schema
+ * version. A failed shape check and a version mismatch take the same branch —
+ * one code path for "unusable blob" beats two.
+ *
+ * Replaced with a zod schema in the patch-contract phase.
+ */
+function isUsableTree(value: unknown): value is ProjectTree {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Partial<ProjectTree>;
+  return (
+    candidate.schemaVersion === SCHEMA_VERSION &&
+    typeof candidate.projectName === "string" &&
+    Array.isArray(candidate.roots)
+  );
 }
 
-function createNavItemId(groupId: string, label: string): string {
-  const slug = label
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
-  return `${groupId}-${slug || "milestone"}-${Date.now().toString(36)}`;
+function firstWorkstreamId(tree: ProjectTree): string | null {
+  let found: string | null = null;
+  walk(tree.roots, (node) => {
+    if (found === null && node.kind === "workstream") found = node.id;
+  });
+  return found;
 }
 
-type MilestoneAddition = {
-  id?: string;
-  groupId: string;
-  label: string;
-  status?: MilestoneStatus;
-  objective?: string;
-  decisions?: Decision[];
-};
-
-function applyNavPatch(navModel: NavModel, patch: NavPatch): NavModel {
-  let nextModel: NavModel = {
-    ...navModel,
-    groups: navModel.groups.map((group) => ({ ...group, items: [...group.items] })),
-  };
-
-  if (patch.setProjectName?.trim()) {
-    nextModel = { ...nextModel, projectName: patch.setProjectName.trim() };
-  }
-
-  if (patch.setFoundationDetail) {
-    nextModel = { ...nextModel, foundationDetail: patch.setFoundationDetail };
-  }
-
-  if (patch.setGroups?.length) {
-    nextModel = {
-      ...nextModel,
-      groups: patch.setGroups.map((group) => ({
-        id: group.id,
-        label: group.label,
-        isExpanded: group.isExpanded ?? true,
-        isDimmed: group.isDimmed ?? false,
-        items: (group.items ?? [])
-          .map((item) => ({
-            id: item.id ?? createNavItemId(group.id, item.label),
-            label: item.label.trim(),
-            status: item.status ?? ("incomplete-decision" as const),
-            objective: item.objective,
-            decisions: item.decisions,
-            detail: item.detail,
-          }))
-          .filter((m) => m.label.length > 0),
-      })),
-    };
-  }
-
-  if (patch.updateItems?.length) {
-    nextModel = {
-      ...nextModel,
-      groups: nextModel.groups.map((group) => ({
-        ...group,
-        items: group.items.map((item) => {
-          const update = patch.updateItems?.find((u) => u.id === item.id);
-          if (!update) return item;
-          return {
-            ...item,
-            ...(update.status !== undefined && { status: update.status }),
-            ...(update.detail !== undefined && { detail: update.detail }),
-            ...(update.objective !== undefined && { objective: update.objective }),
-            ...(update.decisions !== undefined && { decisions: update.decisions }),
-          };
-        }),
-      })),
-    };
-  }
-
-  if (patch.clearAllItemsBeforeAdd) {
-    nextModel = {
-      ...nextModel,
-      groups: nextModel.groups.map((group) => ({
-        ...group,
-        items: [],
-      })),
-    };
-  }
-
-  if (patch.addMilestones?.length) {
-    const additionsByGroup = new Map<
-      string,
-      Array<MilestoneAddition>
-    >();
-    for (const g of nextModel.groups) {
-      additionsByGroup.set(g.id, []);
-    }
-    for (const milestone of patch.addMilestones) {
-      if (!additionsByGroup.has(milestone.groupId)) continue;
-      additionsByGroup.get(milestone.groupId)?.push(milestone);
-    }
-
-    nextModel = {
-      ...nextModel,
-      groups: nextModel.groups.map((group) => {
-        const groupAdditions = additionsByGroup.get(group.id) ?? [];
-        if (groupAdditions.length === 0) {
-          return group;
-        }
-
-        const additions = groupAdditions
-          .map((milestone) => ({
-            id: milestone.id ?? createNavItemId(group.id, milestone.label),
-            label: milestone.label.trim(),
-            status: milestone.status ?? "incomplete-decision",
-            objective: milestone.objective,
-            decisions: milestone.decisions,
-          }))
-          .filter((m) => m.label.length > 0);
-
-        if (additions.length === 0) {
-          return group;
-        }
-
-        return {
-          ...group,
-          isExpanded: true,
-          items: [...group.items, ...additions],
-        };
-      }),
-    };
-  }
-
-  return nextModel;
+function initialTree(): ProjectTree {
+  return createProductDesignTemplate();
 }
 
-type StreamTextEvent = {
-  type: "text";
-  content: string;
-  seq: number;
-};
+function initialSelection(tree: ProjectTree): string | null {
+  return findByTemplateKey(tree.roots, INITIAL_TEMPLATE_KEY)?.id ?? firstWorkstreamId(tree);
+}
 
-type StreamNavPatchEvent = {
-  type: "nav_patch";
-  content: NavPatch;
-};
+// ─── SSE ──────────────────────────────────────────────────────────────────────
 
-type StreamSuggestionsEvent = {
-  type: "suggestions";
-  content: string[][];
-};
-
-type StreamDoneEvent = {
-  type: "done";
-};
-
-type StreamErrorEvent = {
-  type: "error";
-  message: string;
-};
-
-type StreamEvent = StreamTextEvent | StreamNavPatchEvent | StreamSuggestionsEvent | StreamDoneEvent | StreamErrorEvent;
+type StreamEvent =
+  | { type: "text"; content: string; seq: number }
+  | { type: "nav_patch"; content: unknown }
+  | { type: "suggestions"; content: SuggestionGroup[] }
+  | { type: "done" }
+  | { type: "error"; message: string };
 
 function parseSseEvents(chunk: string): { events: StreamEvent[]; remainder: string } {
   const rawEvents = chunk.split("\n\n");
@@ -317,14 +149,10 @@ function parseSseEvents(chunk: string): { events: StreamEvent[]; remainder: stri
   const events: StreamEvent[] = [];
 
   for (const rawEvent of rawEvents) {
-    const dataLine = rawEvent
-      .split("\n")
-      .find((line) => line.startsWith("data: "));
+    const dataLine = rawEvent.split("\n").find((line) => line.startsWith("data: "));
     if (!dataLine) continue;
-
     try {
-      const parsed = JSON.parse(dataLine.slice(6)) as StreamEvent;
-      events.push(parsed);
+      events.push(JSON.parse(dataLine.slice(6)) as StreamEvent);
     } catch {
       continue;
     }
@@ -333,26 +161,69 @@ function parseSseEvents(chunk: string): { events: StreamEvent[]; remainder: stri
   return { events, remainder };
 }
 
+// ─── page ─────────────────────────────────────────────────────────────────────
+
 export default function Home() {
   const messagesRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isSendingRef = useRef(false);
   const stopRequestedRef = useRef(false);
-  const triggeredPlanItemsRef = useRef(new Set<string>());
-  const [selectedProjectId, setSelectedProjectId] = useState(DEFAULT_PROJECT_ID);
-  const [navModel, setNavModel] = useState<NavModel>(INITIAL_NAV_MODEL);
-  const [activeNavItemId, setActiveNavItemId] = useState(INITIAL_ACTIVE_NAV_ITEM_ID);
-  const [threadsByNavItemId, setThreadsByNavItemId] = useState<ThreadsByNavItemId>(
-    ensureThreads({}, INITIAL_NAV_MODEL)
-  );
+
+  const [tree, setTree] = useState<ProjectTree>(initialTree);
+  /** Any node. Drives the highlighted row and the detail panel. */
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  /**
+   * The workstream whose conversation is open. Sticky by design: selecting a
+   * folder (which owns no thread) highlights it without throwing away the chat
+   * you were in. That is what makes deep-tree navigation feel like a layers
+   * panel rather than a tab switcher.
+   */
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [threadsByNodeId, setThreadsByNodeId] = useState<ThreadsByNodeId>({});
+
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [retryText, setRetryText] = useState<string | undefined>();
   const [isHydrated, setIsHydrated] = useState(false);
   const [isNearBottom, setIsNearBottom] = useState(true);
-  const [currentGoal, setCurrentGoal] = useState<Goal | null>(null);
-  const [suggestions, setSuggestions] = useState<string[][]>([]);
+  const [suggestions, setSuggestions] = useState<SuggestionGroup[]>([]);
+  const [pendingAnswers, setPendingAnswers] = useState<Record<number, string>>({});
+
+  const expansion = useTreeExpansion(tree.roots, {
+    defaultExpandedIds: [],
+  });
+
+  const selectedNode = useMemo(
+    () => (selectedNodeId ? findNode(tree.roots, selectedNodeId) : undefined),
+    [tree, selectedNodeId]
+  );
+
+  const messages = useMemo<ThreadMessage[]>(
+    () => (activeThreadId ? (threadsByNodeId[activeThreadId] ?? []) : []),
+    [activeThreadId, threadsByNodeId]
+  );
+
+  const isStreaming = useMemo(
+    () => messages.some((message) => message.state === "streaming"),
+    [messages]
+  );
+
+  // First unanswered group index (clamped to 0 when all are answered)
+  const groupIdx = (() => {
+    if (suggestions.length <= 1) return 0;
+    const first = suggestions.findIndex((_, i) => !(i in pendingAnswers));
+    return first === -1 ? suggestions.length - 1 : first;
+  })();
+
+  useEffect(() => {
+    setPendingAnswers({});
+  }, [suggestions]);
+
+  useEffect(() => {
+    setSuggestions([]);
+    setPendingAnswers({});
+  }, [activeThreadId]);
 
   useEffect(() => {
     document.body.style.pointerEvents = "";
@@ -361,52 +232,86 @@ export default function Home() {
     };
   }, []);
 
-  const messages = useMemo<ThreadMessage[]>(() => {
-    return threadsByNavItemId[activeNavItemId] ?? [];
-  }, [activeNavItemId, threadsByNavItemId]);
+  // ── hydrate ────────────────────────────────────────────────────────────────
 
-  const scrollToBottom = useCallback(() => {
-    messagesRef.current?.scrollTo({
-      top: messagesRef.current.scrollHeight,
-      behavior: "smooth",
+  useEffect(() => {
+    async function hydrate() {
+      const stored = await loadUserState();
+      const usable = isUsableTree(stored.projectTree);
+      const hydratedTree = usable ? (stored.projectTree as ProjectTree) : initialTree();
+      // If the blob was unusable the tree was rebuilt, so old thread keys point
+      // at nodes that no longer exist. Drop them rather than orphan them.
+      const storedThreads = usable ? (stored.threadsByNodeId ?? {}) : {};
+      const hydratedThreads = ensureThreads(normalizeThreads(storedThreads), hydratedTree);
+
+      const storedSelection =
+        usable && stored.selectedNodeId && findNode(hydratedTree.roots, stored.selectedNodeId)
+          ? stored.selectedNodeId
+          : initialSelection(hydratedTree);
+
+      const thread = storedSelection
+        ? (nearestSelfOrAncestorOfKind(hydratedTree.roots, storedSelection, "workstream")?.id ??
+          firstWorkstreamId(hydratedTree))
+        : firstWorkstreamId(hydratedTree);
+
+      setTree(hydratedTree);
+      setThreadsByNodeId(hydratedThreads);
+      setSelectedNodeId(storedSelection);
+      setActiveThreadId(thread);
+      setIsHydrated(true);
+
+      const foundations = findByTemplateKey(hydratedTree.roots, TEMPLATE_KEYS.foundations);
+      if (foundations) expansion.expand(foundations.id);
+      if (storedSelection) expansion.revealNode(storedSelection);
+    }
+    void hydrate();
+    // Runs once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── persist ────────────────────────────────────────────────────────────────
+  // Still unthrottled — every streamed token triggers a full-blob upsert. Fixed
+  // in the storage-hardening phase, deliberately kept out of this change.
+  useEffect(() => {
+    if (!isHydrated) return;
+    void saveUserState({ projectTree: tree, selectedNodeId, threadsByNodeId });
+  }, [isHydrated, tree, selectedNodeId, threadsByNodeId]);
+
+  // ── selection ──────────────────────────────────────────────────────────────
+
+  const handleSelect = useCallback(
+    (nodeId: string) => {
+      setSelectedNodeId(nodeId);
+      setError(undefined);
+      setRetryText(undefined);
+      setIsNearBottom(true);
+
+      const workstream = nearestSelfOrAncestorOfKind(tree.roots, nodeId, "workstream");
+      // A folder has no workstream ancestor — keep the conversation we're in.
+      if (workstream) setActiveThreadId(workstream.id);
+
+      const node = findNode(tree.roots, nodeId);
+      if (node && node.children.length > 0) expansion.toggle(nodeId);
+    },
+    [tree, expansion]
+  );
+
+  const handleToggleAction = useCallback((nodeId: string, done: boolean) => {
+    setTree((prev) => {
+      const roots = updateNode(prev.roots, nodeId, (node) => {
+        if (node.kind !== "action") return node;
+        const next: ActionNode = {
+          ...node,
+          done,
+          doneAt: done ? new Date().toISOString() : undefined,
+        };
+        return touch(next);
+      });
+      return roots === prev.roots ? prev : { ...prev, roots };
     });
   }, []);
 
-  const isStreaming = useMemo(
-    () => messages.some((message) => message.state === "streaming"),
-    [messages]
-  );
-
-  useEffect(() => {
-    const storedNavModel = getStorage<NavModel>("navModel");
-    const hydratedNavModel = storedNavModel ?? INITIAL_NAV_MODEL;
-    const storedThreads = getStorage<ThreadsByNavItemId>("threadsByNavItemId") ?? {};
-    const hydratedThreads = ensureThreads(
-      normalizeThreads(storedThreads),
-      hydratedNavModel
-    );
-    const storedActiveItemId = getStorage<string>("activeNavItemId");
-    const safeActiveItemId =
-      storedActiveItemId === GOAL_THREAD_ID ||
-      (storedActiveItemId && findItemById(hydratedNavModel, storedActiveItemId))
-        ? (storedActiveItemId as string)
-        : getFallbackActiveItemId(hydratedNavModel);
-    const storedGoal = getStorage<Goal | null>("currentGoal");
-
-    setNavModel(hydratedNavModel);
-    setThreadsByNavItemId(hydratedThreads);
-    setActiveNavItemId(safeActiveItemId);
-    setCurrentGoal(storedGoal ?? null);
-    setIsHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isHydrated) return;
-    setStorage("navModel", navModel);
-    setStorage("threadsByNavItemId", threadsByNavItemId);
-    setStorage("activeNavItemId", activeNavItemId);
-    setStorage("currentGoal", currentGoal);
-  }, [activeNavItemId, currentGoal, isHydrated, navModel, threadsByNavItemId]);
+  // ── chat ───────────────────────────────────────────────────────────────────
 
   const updateAssistantMessage = useCallback(
     (
@@ -414,14 +319,13 @@ export default function Home() {
       assistantMessageId: string,
       updater: (message: ThreadMessage) => ThreadMessage
     ) => {
-      setThreadsByNavItemId((prev) => {
+      setThreadsByNodeId((prev) => {
         const thread = prev[threadId] ?? [];
         return {
           ...prev,
-          [threadId]: thread.map((message) => {
-            if (message.id !== assistantMessageId) return message;
-            return updater(message);
-          }),
+          [threadId]: thread.map((message) =>
+            message.id === assistantMessageId ? updater(message) : message
+          ),
         };
       });
     },
@@ -430,10 +334,7 @@ export default function Home() {
 
   const finalizeAssistantMessage = useCallback(
     (threadId: string, assistantMessageId: string, state: MessageState) => {
-      updateAssistantMessage(threadId, assistantMessageId, (message) => ({
-        ...message,
-        state,
-      }));
+      updateAssistantMessage(threadId, assistantMessageId, (message) => ({ ...message, state }));
     },
     [updateAssistantMessage]
   );
@@ -442,10 +343,11 @@ export default function Home() {
     async (overrideText?: string, options?: { silent?: boolean }) => {
       const text = (overrideText ?? inputValue).trim();
       if (!text || isSendingRef.current) return;
+      const threadId = activeThreadId;
+      if (!threadId) return;
 
       const silent = options?.silent ?? false;
-      const threadId = activeNavItemId;
-      const priorMessages = (threadsByNavItemId[threadId] ?? [])
+      const priorMessages = (threadsByNodeId[threadId] ?? [])
         .filter((m) => m.state === "complete" || m.state === undefined)
         .map((m) => ({ role: m.role, text: m.text }));
       const userMessage = createMessage("user", text);
@@ -460,7 +362,7 @@ export default function Home() {
         setInputValue("");
       }
       setSuggestions([]);
-      setThreadsByNavItemId((prev) => ({
+      setThreadsByNodeId((prev) => ({
         ...prev,
         [threadId]: silent
           ? [...(prev[threadId] ?? []), assistantMessage]
@@ -496,8 +398,8 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: text,
-            navModel,
-            activeNavItemId: threadId,
+            navModel: tree,
+            activeNavItemId: selectedNodeId ?? threadId,
             threadMessages: priorMessages,
           }),
           signal: controller.signal,
@@ -548,27 +450,9 @@ export default function Home() {
             }
 
             if (event.type === "nav_patch") {
-              const patch = event.content;
-              if ((patch.addMilestones?.length || patch.setGroups?.length) && patch.setProjectName?.trim()) {
-                setCurrentGoal({
-                  id: crypto.randomUUID(),
-                  text: patch.setProjectName.trim(),
-                  createdAt: new Date().toISOString(),
-                });
-              }
-              setNavModel((prevNavModel) => {
-                const nextModel = applyNavPatch(prevNavModel, patch);
-                setThreadsByNavItemId((prevThreads) => ensureThreads(prevThreads, nextModel));
-
-                if (
-                  patch.setActiveNavItemId &&
-                  findItemById(nextModel, patch.setActiveNavItemId)
-                ) {
-                  setActiveNavItemId(patch.setActiveNavItemId);
-                }
-
-                return nextModel;
-              });
+              // The old group/item patch ops don't map onto the node tree. The
+              // replacement contract (tree_patch) lands with the prompt rewrite;
+              // until then these are dropped rather than misapplied.
               continue;
             }
 
@@ -597,7 +481,11 @@ export default function Home() {
         if (streamTimeoutId) clearTimeout(streamTimeoutId);
 
         if (!doneEventReceived) {
-          finalizeAssistantMessage(threadId, assistantMessage.id, gotAnyText ? "complete" : "error");
+          finalizeAssistantMessage(
+            threadId,
+            assistantMessage.id,
+            gotAnyText ? "complete" : "error"
+          );
           if (!gotAnyText) {
             markErrorWithRetry("Connection ended before a response was received.");
           }
@@ -627,42 +515,16 @@ export default function Home() {
         setIsSending(false);
       }
     },
-    [activeNavItemId, finalizeAssistantMessage, inputValue, navModel, threadsByNavItemId, updateAssistantMessage]
+    [
+      activeThreadId,
+      finalizeAssistantMessage,
+      inputValue,
+      selectedNodeId,
+      threadsByNodeId,
+      tree,
+      updateAssistantMessage,
+    ]
   );
-
-  // Auto-trigger Seymour when entering a fresh Plan thread
-  const sendMessageRef = useRef(sendMessage);
-  useEffect(() => {
-    sendMessageRef.current = sendMessage;
-  }, [sendMessage]);
-
-  useEffect(() => {
-    if (!isHydrated || isSending) return;
-    if (!activeNavItemId.endsWith("-plan")) return;
-    if (triggeredPlanItemsRef.current.has(activeNavItemId)) return;
-    const thread = threadsByNavItemId[activeNavItemId] ?? [];
-    if (thread.length !== 1 || thread[0].role !== "assistant") return;
-    triggeredPlanItemsRef.current.add(activeNavItemId);
-    void sendMessageRef.current("[auto-start: phase entry]", { silent: true });
-  }, [activeNavItemId, isHydrated, isSending, threadsByNavItemId]);
-
-  const handleSelectItem = useCallback((itemId: string) => {
-    setActiveNavItemId(itemId);
-    setError(undefined);
-    setRetryText(undefined);
-    setIsNearBottom(true);
-  }, []);
-
-  const handleSelectProject = useCallback((project: Project) => {
-    const newNavModel = MOCK_NAV_MODELS[project.id] ?? SEYMOUR_NAV_MODEL;
-    setSelectedProjectId(project.id);
-    setNavModel(newNavModel);
-    setThreadsByNavItemId(ensureThreads({}, newNavModel));
-    setActiveNavItemId(GOAL_THREAD_ID);
-    setCurrentGoal(null);
-    setError(undefined);
-    setRetryText(undefined);
-  }, []);
 
   const handleStopGenerating = useCallback(() => {
     if (!abortControllerRef.current) return;
@@ -675,6 +537,35 @@ export default function Home() {
     void sendMessage(retryText);
   }, [retryText, sendMessage]);
 
+  const handleChoiceSelect = useCallback(
+    (option: string, fromGroupIdx: number) => {
+      if (suggestions.length <= 1) {
+        void sendMessage(option);
+        return;
+      }
+      const newAnswers = { ...pendingAnswers, [fromGroupIdx]: option };
+      setPendingAnswers(newAnswers);
+
+      // Auto-send once every question has an answer
+      if (Object.keys(newAnswers).length >= suggestions.length) {
+        const text = suggestions
+          .map((s, i) => `Q: ${s.question ?? `Question ${i + 1}`}\nA: ${newAnswers[i] ?? ""}`)
+          .join("\n\n");
+        void sendMessage(text);
+      }
+    },
+    [suggestions, pendingAnswers, sendMessage]
+  );
+
+  // ── scroll ─────────────────────────────────────────────────────────────────
+
+  const scrollToBottom = useCallback(() => {
+    messagesRef.current?.scrollTo({
+      top: messagesRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, []);
+
   const handleMessagesScroll = useCallback(() => {
     const el = messagesRef.current;
     if (!el) return;
@@ -683,38 +574,30 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (isNearBottom) {
-      scrollToBottom();
-    }
-  }, [activeNavItemId, isNearBottom, messages, scrollToBottom]);
+    if (isNearBottom) scrollToBottom();
+  }, [activeThreadId, isNearBottom, messages, scrollToBottom]);
+
+  // ── render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-seymour-canvas">
       <Nav
-        nav={navToSidebarData(navModel)}
-        activeNavItemId={activeNavItemId}
-        onSelectItem={handleSelectItem}
-        onSelectProject={handleSelectProject}
+        projectName={tree.projectName}
+        roots={tree.roots}
+        selectedNodeId={selectedNodeId}
+        activeThreadId={activeThreadId}
+        expansion={expansion}
+        onSelect={handleSelect}
+        onToggleAction={handleToggleAction}
       />
       <aside
         className="sticky top-0 h-screen w-[400px] min-w-[400px] max-w-[400px] overflow-hidden border-r border-seymour-border bg-seymour-bg"
         aria-label="Detail panel"
       >
-        <DetailPanel
-          activeNavItemId={activeNavItemId}
-          navModel={navModel}
-          selectedItem={findItemById(navModel, activeNavItemId)}
-          currentGoal={currentGoal}
-        />
+        <DetailPanel node={selectedNode} />
       </aside>
-      <main
-        className="flex h-screen flex-1 flex-col overflow-hidden bg-seymour-canvas"
-        role="main"
-      >
-        <section
-          className="flex flex-1 flex-col items-center overflow-hidden"
-          aria-label="Chat"
-        >
+      <main className="flex h-screen flex-1 flex-col overflow-hidden bg-seymour-canvas" role="main">
+        <section className="flex flex-1 flex-col items-center overflow-hidden" aria-label="Chat">
           <MessageList
             messages={messages}
             isStreaming={isStreaming}
@@ -741,12 +624,17 @@ export default function Home() {
           )}
         </section>
         <div className="shrink-0">
+          <ChoiceCard
+            suggestions={suggestions}
+            groupIdx={groupIdx}
+            onSelect={handleChoiceSelect}
+            disabled={isSending}
+          />
           <ChatComposer
             value={inputValue}
             onChange={setInputValue}
             onSend={sendMessage}
             disabled={isSending}
-            suggestions={suggestions}
           />
         </div>
       </main>

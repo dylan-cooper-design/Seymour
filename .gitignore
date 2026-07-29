@@ -39,3 +39,5 @@ next-env.d.ts
 
 # Vercel
 .vercel
+.design-audit-tmp/
+.design-gap-tmp/

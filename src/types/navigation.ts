@@ -10,10 +10,7 @@ export type ThreadMessage = {
   timestamp?: number;
 };
 
-export type MilestoneStatus =
-  | "complete-decision"
-  | "incomplete-decision"
-  | "incomplete-action";
+export type MilestoneStatus = "complete-decision" | "incomplete-decision" | "incomplete-action";
 
 export interface Goal {
   id: string;
@@ -89,6 +86,12 @@ export type ItemDetail = {
 };
 
 export type ThreadsByNavItemId = Record<string, ThreadMessage[]>;
+
+/**
+ * Chat threads keyed by node id. Only workstream nodes own a thread, so this is
+ * 1:1 with the workstreams in the project tree.
+ */
+export type ThreadsByNodeId = Record<string, ThreadMessage[]>;
 
 export type NavPatch = {
   setProjectName?: string;

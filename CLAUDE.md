@@ -1,6 +1,7 @@
 # Seymour — Claude Instructions
 
 ## Icons
+
 Use Lucide React for all icons. Do not use Heroicons.
 
 ---
@@ -20,6 +21,7 @@ When you work with me: make me smarter over time, not just deliver code.
 After completing any task that creates, edits, or deletes files, include a brief debrief. Scale depth to complexity:
 
 **Small/routine changes** (typo fix, rename, simple edit):
+
 - One sentence: what you did and why. Skip entirely if truly trivial.
 
 **Medium changes** (new component, refactor, new pattern):
