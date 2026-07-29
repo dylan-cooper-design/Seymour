@@ -69,10 +69,10 @@ describe("createProductDesignTemplate", () => {
     expect(foundations?.children.every((c) => c.kind === "workstream")).toBe(true);
   });
 
-  it("gives Patterns its Styles and Components folders", () => {
+  it("gives Patterns a README plus its Styles and Components folders", () => {
     const patterns = findByTemplateKey(createProductDesignTemplate().roots, TEMPLATE_KEYS.patterns);
-    expect(patterns?.children.map((c) => c.label)).toEqual(["Styles", "Components"]);
-    expect(patterns?.children.every((c) => c.kind === "folder")).toBe(true);
+    expect(patterns?.children.map((c) => c.label)).toEqual(["README", "Styles", "Components"]);
+    expect(patterns?.children.map((c) => c.kind)).toEqual(["workstream", "folder", "folder"]);
   });
 
   it("resolves every declared template key", () => {
@@ -115,13 +115,39 @@ describe("createProductDesignTemplate", () => {
     });
   });
 
-  it("gives every empty folder a note so it is never a dead end", () => {
+  it("never gives a folder its own note — clicking a folder must never show content", () => {
     const { roots } = createProductDesignTemplate();
     walk(roots, (n) => {
-      if (n.kind === "folder" && n.children.length === 0) {
-        expect(n.note, `${n.label} has no guidance note`).toBeTruthy();
+      if (n.kind === "folder") {
+        expect(n.note, `${n.label} carries a note but folders must not`).toBeUndefined();
       }
     });
+  });
+
+  it("gives every folder without real content a README child so it's never a dead end", () => {
+    const { roots } = createProductDesignTemplate();
+    walk(roots, (n) => {
+      if (n.kind === "folder") {
+        expect(n.children.length, `${n.label} has no children at all`).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  it("gives every README workstream guidance content", () => {
+    const { roots } = createProductDesignTemplate();
+    const readmeKeys = [
+      TEMPLATE_KEYS.researchReadme,
+      TEMPLATE_KEYS.bestPracticesReadme,
+      TEMPLATE_KEYS.patternsReadme,
+      TEMPLATE_KEYS.stylesReadme,
+      TEMPLATE_KEYS.componentsReadme,
+    ];
+    for (const key of readmeKeys) {
+      const node = findByTemplateKey(roots, key);
+      expect(node?.kind, `${key} should be a workstream`).toBe("workstream");
+      expect(node?.label).toBe("README");
+      expect(node?.note, `${key} has no guidance note`).toBeTruthy();
+    }
   });
 
   it("gives every Foundations workstream an objective", () => {

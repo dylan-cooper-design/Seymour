@@ -23,20 +23,27 @@ export const TEMPLATE_KEYS = {
   goals: "foundations.goals",
   constraints: "foundations.constraints",
   research: "research",
+  researchReadme: "research.readme",
   bestPractices: "best-practices",
+  bestPracticesReadme: "best-practices.readme",
   patterns: "patterns",
+  patternsReadme: "patterns.readme",
   styles: "patterns.styles",
+  stylesReadme: "patterns.styles.readme",
   components: "patterns.components",
+  componentsReadme: "patterns.components.readme",
 } as const;
 
 /** Where the user lands on a brand-new project. */
 export const INITIAL_TEMPLATE_KEY = TEMPLATE_KEYS.problemStatement;
 
 /**
- * Folders that ship empty would otherwise be a dead end on day one, so each
- * carries a note the detail panel renders as guidance.
+ * Folders never carry their own readable content — clicking a folder in the
+ * nav must never show anything, only navigate. Every folder that would
+ * otherwise ship empty gets a README workstream child instead, so there's
+ * always something to click into.
  */
-const FOLDER_NOTES = {
+const README_CONTENT = {
   research:
     "**What goes here:** competitive teardowns, interview synthesis, usability findings, analytics reads.\n\nStart a workstream for each study or question you're chasing.",
   bestPractices:
@@ -48,6 +55,10 @@ const FOLDER_NOTES = {
   components:
     "**What goes here:** one workstream per component, or per component family once the set gets large.",
 } as const;
+
+function readme(templateKey: string, note: string) {
+  return createWorkstream("README", { templateKey, note });
+}
 
 export function createProductDesignTemplate(opts: { projectName?: string } = {}): ProjectTree {
   const roots: FolderNode[] = [
@@ -77,27 +88,27 @@ export function createProductDesignTemplate(opts: { projectName?: string } = {})
     createFolder("Research", {
       templateKey: TEMPLATE_KEYS.research,
       locked: true,
-      note: FOLDER_NOTES.research,
+      children: [readme(TEMPLATE_KEYS.researchReadme, README_CONTENT.research)],
     }),
 
     createFolder("Best practices", {
       templateKey: TEMPLATE_KEYS.bestPractices,
       locked: true,
-      note: FOLDER_NOTES.bestPractices,
+      children: [readme(TEMPLATE_KEYS.bestPracticesReadme, README_CONTENT.bestPractices)],
     }),
 
     createFolder("Patterns", {
       templateKey: TEMPLATE_KEYS.patterns,
       locked: true,
-      note: FOLDER_NOTES.patterns,
       children: [
+        readme(TEMPLATE_KEYS.patternsReadme, README_CONTENT.patterns),
         createFolder("Styles", {
           templateKey: TEMPLATE_KEYS.styles,
-          note: FOLDER_NOTES.styles,
+          children: [readme(TEMPLATE_KEYS.stylesReadme, README_CONTENT.styles)],
         }),
         createFolder("Components", {
           templateKey: TEMPLATE_KEYS.components,
-          note: FOLDER_NOTES.components,
+          children: [readme(TEMPLATE_KEYS.componentsReadme, README_CONTENT.components)],
         }),
       ],
     }),
