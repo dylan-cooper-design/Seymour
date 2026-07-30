@@ -1,2 +1,1 @@
-export { loadUserState, saveUserState, clearUserState } from "./client";
-export type { UserState } from "./client";
+export { loadWorkspace, saveWorkspace, clearWorkspace, isUsableWorkspace } from "./client";

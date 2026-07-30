@@ -4,7 +4,6 @@ import {
   extractJsonBlock,
   createJsonBlockFilter,
   buildApiMessages,
-  SESSION_GREETING,
 } from "../parse-agent-reply";
 
 // ---------------------------------------------------------------------------
@@ -29,8 +28,8 @@ describe("normalizeSuggestions", () => {
   });
 
   it("keeps a group with options but no question", () => {
-    expect(normalizeSuggestions([{ options: ["Ready to start", "Not yet"] }])).toEqual([
-      { options: ["Ready to start", "Not yet"] },
+    expect(normalizeSuggestions([{ options: ["Modal", "Full page"] }])).toEqual([
+      { options: ["Modal", "Full page"] },
     ]);
   });
 
@@ -83,27 +82,44 @@ describe("extractJsonBlock", () => {
     expect(extractJsonBlock(text)).toEqual({ cleanReply: text });
   });
 
-  it("extracts navPatch from a json block", () => {
-    const navPatch = { setActiveNavItemId: "phase-1-plan" };
-    const text = `Here is my reply.\n\`\`\`json\n${JSON.stringify({ navPatch })}\n\`\`\``;
+  it("extracts structure from a json block", () => {
+    const structure = { rename: [{ id: "problem", label: "Problem statement" }] };
+    const text = `Here is my reply.\n\`\`\`json\n${JSON.stringify({ structure })}\n\`\`\``;
     const result = extractJsonBlock(text);
-    expect(result.navPatch).toEqual(navPatch);
+    expect(result.structure).toEqual(structure);
     expect(result.cleanReply).toBe("Here is my reply.");
   });
 
+  it("extracts proposals from a json block", () => {
+    const proposals = [
+      { id: "resolve-x", kind: "resolveDecision", nodeId: "framing", resolution: "Modal" },
+    ];
+    const text = `Make your choice.\n\`\`\`json\n${JSON.stringify({ proposals })}\n\`\`\``;
+    const result = extractJsonBlock(text);
+    expect(result.proposals).toEqual(proposals);
+  });
+
+  it("drops an empty proposals array", () => {
+    const text = `No proposals here.\n\`\`\`json\n${JSON.stringify({ proposals: [] })}\n\`\`\``;
+    const result = extractJsonBlock(text);
+    expect(result.proposals).toBeUndefined();
+  });
+
   it("extracts suggestions from a json block", () => {
-    const suggestions = [{ question: "Approve?", options: ["Approved", "I want to adjust this"] }];
+    const suggestions = [{ question: "Which fits?", options: ["Modal", "Full page"] }];
     const text = `Make your choice.\n\`\`\`json\n${JSON.stringify({ suggestions })}\n\`\`\``;
     const result = extractJsonBlock(text);
     expect(result.suggestions).toEqual(suggestions);
   });
 
-  it("extracts both navPatch and suggestions together", () => {
-    const navPatch = { setActiveNavItemId: "phase-1" };
+  it("extracts structure, proposals, and suggestions together", () => {
+    const structure = { setProjectName: "Password recovery" };
+    const proposals = [{ id: "note-1", kind: "note", nodeId: "problem", note: "..." }];
     const suggestions = [{ options: ["Yes", "No"] }];
-    const text = `Reply.\n\`\`\`json\n${JSON.stringify({ navPatch, suggestions })}\n\`\`\``;
+    const text = `Reply.\n\`\`\`json\n${JSON.stringify({ structure, proposals, suggestions })}\n\`\`\``;
     const result = extractJsonBlock(text);
-    expect(result.navPatch).toEqual(navPatch);
+    expect(result.structure).toEqual(structure);
+    expect(result.proposals).toEqual(proposals);
     expect(result.suggestions).toEqual(suggestions);
   });
 
@@ -111,12 +127,13 @@ describe("extractJsonBlock", () => {
     const text = "Here is my reply.\n```json\n{ bad json }\n```";
     const result = extractJsonBlock(text);
     expect(result.cleanReply).toBe(text);
-    expect(result.navPatch).toBeUndefined();
+    expect(result.structure).toBeUndefined();
+    expect(result.proposals).toBeUndefined();
     expect(result.suggestions).toBeUndefined();
   });
 
   it("strips the json block from the visible reply", () => {
-    const text = `Before.\n\`\`\`json\n{"navPatch": {}}\n\`\`\`\nAfter.`;
+    const text = `Before.\n\`\`\`json\n{"structure": {}}\n\`\`\`\nAfter.`;
     const result = extractJsonBlock(text);
     expect(result.cleanReply).toBe("Before.\n\nAfter.");
   });
@@ -175,36 +192,40 @@ describe("createJsonBlockFilter", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildApiMessages", () => {
-  const navContext = '{"activeNavItemId":"phase-1"}';
+  const projectContext = '{"activeNodeId":"problem"}';
   const currentMessage = "I want to build a SaaS app.";
 
-  it("injects synthetic greeting for a new session (no thread messages)", () => {
-    const result = buildApiMessages([], navContext, currentMessage);
-    expect(result).toHaveLength(3);
+  it("embeds only the current turn when there is no thread history", () => {
+    const result = buildApiMessages([], projectContext, currentMessage);
+    expect(result).toHaveLength(1);
     expect(result[0].role).toBe("user");
-    expect(result[1].role).toBe("assistant");
-    expect(result[1].content).toBe(SESSION_GREETING);
-    expect(result[2].role).toBe("user");
-    expect(result[2].content).toContain(currentMessage);
-    expect(result[2].content).toContain(navContext);
+    expect(result[0].content).toContain(currentMessage);
+    expect(result[0].content).toContain(projectContext);
   });
 
-  it("does not inject synthetic greeting when thread history exists", () => {
+  it("drops a leading assistant greeting with no prior user turn", () => {
+    const thread = [{ role: "assistant", text: "**Problem statement**\n\nSettle the problem." }];
+    const result = buildApiMessages(thread, projectContext, currentMessage);
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe("user");
+  });
+
+  it("does not inject a synthetic greeting when thread history exists", () => {
     const thread = [
       { role: "user", text: "I want to build something." },
       { role: "assistant", text: "Great, tell me more." },
     ];
-    const result = buildApiMessages(thread, navContext, currentMessage);
+    const result = buildApiMessages(thread, projectContext, currentMessage);
     expect(result).toHaveLength(3);
     expect(result[0].content).toBe("I want to build something.");
     expect(result[1].content).toBe("Great, tell me more.");
     expect(result[2].content).toContain(currentMessage);
   });
 
-  it("embeds navContext and currentMessage in the final user turn", () => {
-    const result = buildApiMessages([], navContext, currentMessage);
+  it("embeds projectContext and currentMessage in the final user turn", () => {
+    const result = buildApiMessages([], projectContext, currentMessage);
     const lastMessage = result[result.length - 1];
-    expect(lastMessage.content).toContain(`NAV_CONTEXT:\n${navContext}`);
+    expect(lastMessage.content).toContain(`PROJECT_CONTEXT:\n${projectContext}`);
     expect(lastMessage.content).toContain(`USER_MESSAGE:\n${currentMessage}`);
   });
 
@@ -214,8 +235,7 @@ describe("buildApiMessages", () => {
       { role: "user", text: "First user message." },
       { role: "assistant", text: "Response." },
     ];
-    const result = buildApiMessages(thread, navContext, currentMessage);
-    // First item should be the first user message, not the assistant greeting
+    const result = buildApiMessages(thread, projectContext, currentMessage);
     expect(result[0].content).toBe("First user message.");
   });
 });

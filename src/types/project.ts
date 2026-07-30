@@ -10,7 +10,7 @@
  */
 
 /** Bump when the persisted shape changes incompatibly. Stale blobs reset to the template. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export type NodeKind = "folder" | "workstream" | "decision" | "action";
 

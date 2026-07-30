@@ -12,15 +12,17 @@
 
 - **Routes and layouts**: `src/app/`
 - **UI components**: `src/components/` (Figma-sourced and shared)
-- **Agents**: `src/agents/` (one folder per agent; entry points and skills)
-- **Shared code**: `src/lib/` (utils, storage helpers)
+- **Agents**: `src/agents/` — see `product/agents-architecture.md`
+- **Shared code**: `src/lib/` (utils, tree helpers, storage helpers)
 - **Types**: `src/types/`
+- **Product definition**: `product/` (why it exists, how it behaves, agent structure)
 
 ## Conventions
 
 - TypeScript strict mode. Tailwind for UI. No em dashes in prose.
-- Persistence: app data lives in browser local storage via helpers in `src/lib/storage/`. See `docs/agents/` for agent goals and `docs/figma.md` for Figma workflow.
+- Persistence: Supabase (auth + `user_state` table), via helpers in `src/lib/storage/`. See `docs/figma.md` for Figma workflow.
 
 ## Testing
 
-Tests are not set up yet. When added, run them with the project test script (e.g. `pnpm test`).
+Vitest is configured but no `test` script exists in `package.json` yet — run
+`npx vitest run` directly (or `npx vitest` to watch).

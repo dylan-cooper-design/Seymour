@@ -7,23 +7,36 @@ import type { SuggestionGroup } from "@/agents/first/parse-agent-reply";
 import { MessageList } from "@/components/MessageList";
 import { Nav } from "@/components/nav/Nav";
 import { DetailPanel } from "@/components/detail/DetailPanel";
-import { useTreeExpansion } from "@/hooks/useTreeExpansion";
-import { loadUserState, saveUserState } from "@/lib/storage";
+import { ChatHistoryPanel } from "@/components/detail/ChatHistoryPanel";
+import { ResizableSplit } from "@/components/detail/ResizableSplit";
+import { useTreeExpansion, type TreeExpansion } from "@/hooks/useTreeExpansion";
+import { loadWorkspace, saveWorkspace } from "@/lib/storage";
+import { createDemoWorkspace } from "@/lib/demo";
 import {
   findByTemplateKey,
   findNode,
+  getAncestors,
   nearestSelfOrAncestorOfKind,
   updateNode,
   walk,
 } from "@/lib/tree/nodes";
 import { touch } from "@/lib/tree/create";
 import {
-  INITIAL_TEMPLATE_KEY,
-  TEMPLATE_KEYS,
-  createProductDesignTemplate,
-} from "@/lib/templates/product-design";
+  applyProposal,
+  applyStructurePatch,
+  proposalTargetId,
+  structurePatchTargetIds,
+} from "@/lib/tree/patch";
+import { INITIAL_TEMPLATE_KEY, TEMPLATE_KEYS } from "@/lib/templates/product-design";
 import { SCHEMA_VERSION, type ActionNode, type ProjectTree } from "@/types/project";
-import type { MessageState, ThreadMessage, ThreadsByNodeId } from "@/types/navigation";
+import type {
+  ChatSession,
+  MessageState,
+  SessionsByWorkstreamId,
+  ThreadMessage,
+} from "@/types/navigation";
+import type { Proposal, ProposalRecord, StructurePatch } from "@/types/tree-patch";
+import { activeProject, type ProjectState, type Workspace } from "@/types/workspace";
 
 const API_TIMEOUT_MS = 30_000;
 const STREAM_IDLE_TIMEOUT_MS = 30_000;
@@ -56,13 +69,30 @@ function normalizeThreadMessage(message: Partial<ThreadMessage>): ThreadMessage 
     text: typeof message.text === "string" ? message.text : "",
     state: message.role === "assistant" ? message.state : undefined,
     timestamp: typeof message.timestamp === "number" ? message.timestamp : Date.now(),
+    // Carried through deliberately: without this, every accepted or rejected
+    // proposal card silently disappears from the transcript on reload, leaving
+    // a tree change with no visible record of where it came from.
+    ...(Array.isArray(message.proposals) ? { proposals: message.proposals } : {}),
   };
 }
 
-function normalizeThreads(threads: ThreadsByNodeId): ThreadsByNodeId {
-  const normalized: ThreadsByNodeId = {};
-  for (const [threadId, messages] of Object.entries(threads)) {
-    normalized[threadId] = (messages ?? []).map(normalizeThreadMessage);
+function normalizeSession(session: Partial<ChatSession>, workstreamId: string): ChatSession {
+  return {
+    id: typeof session.id === "string" && session.id ? session.id : createMessageId(),
+    workstreamId,
+    messages: (session.messages ?? []).map(normalizeThreadMessage),
+    taggedNodeIds: Array.isArray(session.taggedNodeIds) ? session.taggedNodeIds : [],
+    createdAt: typeof session.createdAt === "number" ? session.createdAt : Date.now(),
+    updatedAt: typeof session.updatedAt === "number" ? session.updatedAt : Date.now(),
+  };
+}
+
+function normalizeSessions(sessions: SessionsByWorkstreamId): SessionsByWorkstreamId {
+  const normalized: SessionsByWorkstreamId = {};
+  for (const [workstreamId, list] of Object.entries(sessions)) {
+    normalized[workstreamId] = (list ?? []).map((session) =>
+      normalizeSession(session, workstreamId)
+    );
   }
   return normalized;
 }
@@ -71,26 +101,45 @@ function workstreamGreeting(label: string, objective?: string): string {
   return objective ? `**${label}**\n\n${objective}` : `**${label}**`;
 }
 
+function createGreetingSession(
+  workstreamId: string,
+  label: string,
+  objective?: string
+): ChatSession {
+  const now = Date.now();
+  return {
+    id: createMessageId(),
+    workstreamId,
+    messages: [
+      createMessage("assistant", workstreamGreeting(label, objective), { state: "complete" }),
+    ],
+    taggedNodeIds: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 /**
- * One thread per workstream — never per folder, decision, or action.
+ * One session list per workstream — never per folder, decision, or action.
  *
  * Clicking a decision keeps you in its parent workstream's conversation, because
  * that IS the conversation about that decision. Giving decisions their own
- * threads would shatter one discussion into stubs that can't be merged back.
+ * conversations would shatter one discussion into stubs that can't be merged back.
+ * A session gets attributed to a specific node only via `taggedNodeIds`, set when
+ * a write actually targets it (see `structurePatchTargetIds`/`proposalTargetId`).
  */
-function ensureThreads(threads: ThreadsByNodeId, tree: ProjectTree): ThreadsByNodeId {
-  const next: ThreadsByNodeId = { ...threads };
+function ensureSessions(
+  sessions: SessionsByWorkstreamId,
+  tree: ProjectTree
+): SessionsByWorkstreamId {
+  const next: SessionsByWorkstreamId = { ...sessions };
   const validIds = new Set<string>();
 
   walk(tree.roots, (node) => {
     if (node.kind !== "workstream") return;
     validIds.add(node.id);
     if (!next[node.id] || next[node.id].length === 0) {
-      next[node.id] = [
-        createMessage("assistant", workstreamGreeting(node.label, node.objective), {
-          state: "complete",
-        }),
-      ];
+      next[node.id] = [createGreetingSession(node.id, node.label, node.objective)];
     }
   });
 
@@ -101,21 +150,9 @@ function ensureThreads(threads: ThreadsByNodeId, tree: ProjectTree): ThreadsByNo
   return next;
 }
 
-/**
- * A stored blob is usable only if it parses as a tree at the CURRENT schema
- * version. A failed shape check and a version mismatch take the same branch —
- * one code path for "unusable blob" beats two.
- *
- * Replaced with a zod schema in the patch-contract phase.
- */
-function isUsableTree(value: unknown): value is ProjectTree {
-  if (typeof value !== "object" || value === null) return false;
-  const candidate = value as Partial<ProjectTree>;
-  return (
-    candidate.schemaVersion === SCHEMA_VERSION &&
-    typeof candidate.projectName === "string" &&
-    Array.isArray(candidate.roots)
-  );
+function latestSessionId(sessions: ChatSession[] | undefined): string | null {
+  if (!sessions || sessions.length === 0) return null;
+  return sessions[sessions.length - 1].id;
 }
 
 function firstWorkstreamId(tree: ProjectTree): string | null {
@@ -126,19 +163,61 @@ function firstWorkstreamId(tree: ProjectTree): string | null {
   return found;
 }
 
-function initialTree(): ProjectTree {
-  return createProductDesignTemplate();
-}
-
 function initialSelection(tree: ProjectTree): string | null {
   return findByTemplateKey(tree.roots, INITIAL_TEMPLATE_KEY)?.id ?? firstWorkstreamId(tree);
+}
+
+/**
+ * Everything needed to render a project, derived from its stored state.
+ *
+ * Both hydrate and project-switch go through this, so a switched-into project
+ * gets exactly the same repair pass as a freshly loaded one: sessions filled
+ * in for every workstream, a selection that's guaranteed to still exist, and
+ * the active thread resolved from that selection.
+ */
+function openProject(project: ProjectState) {
+  const sessions = ensureSessions(
+    normalizeSessions(project.sessionsByWorkstreamId ?? {}),
+    project.tree
+  );
+
+  const selectedNodeId =
+    project.selectedNodeId && findNode(project.tree.roots, project.selectedNodeId)
+      ? project.selectedNodeId
+      : initialSelection(project.tree);
+
+  const activeThreadId = selectedNodeId
+    ? (nearestSelfOrAncestorOfKind(project.tree.roots, selectedNodeId, "workstream")?.id ??
+      firstWorkstreamId(project.tree))
+    : firstWorkstreamId(project.tree);
+
+  return {
+    tree: project.tree,
+    sessions,
+    selectedNodeId,
+    activeThreadId,
+    activeSessionId: latestSessionId(activeThreadId ? sessions[activeThreadId] : undefined),
+  };
+}
+
+/**
+ * Open every row above `nodeId` in a tree that isn't in state yet.
+ *
+ * `expansion.revealNode` resolves ancestors against the *rendered* tree, which
+ * during a project switch is still the outgoing project's — so it would look
+ * the node up in the wrong forest and silently find nothing.
+ */
+function revealIn(tree: ProjectTree, nodeId: string | null, expansion: TreeExpansion) {
+  if (!nodeId) return;
+  for (const ancestor of getAncestors(tree.roots, nodeId)) expansion.expand(ancestor.id);
 }
 
 // ─── SSE ──────────────────────────────────────────────────────────────────────
 
 type StreamEvent =
   | { type: "text"; content: string; seq: number }
-  | { type: "nav_patch"; content: unknown }
+  | { type: "structure"; content: StructurePatch }
+  | { type: "proposals"; content: Proposal[] }
   | { type: "suggestions"; content: SuggestionGroup[] }
   | { type: "done" }
   | { type: "error"; message: string };
@@ -169,17 +248,41 @@ export default function Home() {
   const isSendingRef = useRef(false);
   const stopRequestedRef = useRef(false);
 
-  const [tree, setTree] = useState<ProjectTree>(initialTree);
-  /** Any node. Drives the highlighted row and the detail panel. */
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   /**
-   * The workstream whose conversation is open. Sticky by design: selecting a
-   * folder (which owns no thread) highlights it without throwing away the chat
-   * you were in. That is what makes deep-tree navigation feel like a layers
+   * The starting workspace, built once per mount. Used as-is until stored state
+   * arrives, and kept as this user's initial content if nothing was stored.
+   */
+  const [seed] = useState(() => {
+    const workspace = createDemoWorkspace();
+    const active = activeProject(workspace) ?? workspace.projects[0];
+    return { workspace, opened: openProject(active) };
+  });
+
+  /**
+   * Every project's stored state. The entry for `activeProjectId` is a stale
+   * copy — the live state below is the real one — and gets folded back in when
+   * the workspace is assembled for saving or when the user switches away.
+   */
+  const [projects, setProjects] = useState<ProjectState[]>(seed.workspace.projects);
+  const [activeProjectId, setActiveProjectId] = useState<string>(seed.workspace.activeProjectId);
+
+  const [tree, setTree] = useState<ProjectTree>(seed.opened.tree);
+  /** Any node. Drives the highlighted row, the doc pane, and the history filter. */
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(seed.opened.selectedNodeId);
+  /**
+   * The workstream whose session list is open. Sticky by design: selecting a
+   * folder (which owns no session list) highlights it without throwing away the
+   * chat you were in. That is what makes deep-tree navigation feel like a layers
    * panel rather than a tab switcher.
    */
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-  const [threadsByNodeId, setThreadsByNodeId] = useState<ThreadsByNodeId>({});
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(seed.opened.activeThreadId);
+  /** Which of activeThreadId's sessions is open in the chat pane. */
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(
+    seed.opened.activeSessionId
+  );
+  const [sessionsByWorkstreamId, setSessionsByWorkstreamId] = useState<SessionsByWorkstreamId>(
+    seed.opened.sessions
+  );
 
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -199,15 +302,42 @@ export default function Home() {
     [tree, selectedNodeId]
   );
 
-  const messages = useMemo<ThreadMessage[]>(
-    () => (activeThreadId ? (threadsByNodeId[activeThreadId] ?? []) : []),
-    [activeThreadId, threadsByNodeId]
+  const activeSessions = useMemo(
+    () => (activeThreadId ? (sessionsByWorkstreamId[activeThreadId] ?? []) : []),
+    [activeThreadId, sessionsByWorkstreamId]
   );
+
+  const activeSession = useMemo(
+    () => activeSessions.find((session) => session.id === activeSessionId),
+    [activeSessions, activeSessionId]
+  );
+
+  const messages = useMemo<ThreadMessage[]>(() => activeSession?.messages ?? [], [activeSession]);
 
   const isStreaming = useMemo(
     () => messages.some((message) => message.state === "streaming"),
     [messages]
   );
+
+  // The exact node the right-panel history is scoped to — the selected node's
+  // owning workstream (itself, if it is one). No workstream ancestor (a folder
+  // at the root) means there is nothing to show history for.
+  const historyWorkstreamId = useMemo(
+    () =>
+      selectedNodeId
+        ? (nearestSelfOrAncestorOfKind(tree.roots, selectedNodeId, "workstream")?.id ?? null)
+        : null,
+    [tree, selectedNodeId]
+  );
+
+  const nodeHistory = useMemo(() => {
+    if (!historyWorkstreamId || !selectedNodeId) return [];
+    const sessions = sessionsByWorkstreamId[historyWorkstreamId] ?? [];
+    return sessions
+      .filter((session) => session.taggedNodeIds.includes(selectedNodeId))
+      .slice()
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [sessionsByWorkstreamId, historyWorkstreamId, selectedNodeId]);
 
   // First unanswered group index (clamped to 0 when all are answered)
   const groupIdx = (() => {
@@ -223,7 +353,7 @@ export default function Home() {
   useEffect(() => {
     setSuggestions([]);
     setPendingAnswers({});
-  }, [activeThreadId]);
+  }, [activeSessionId]);
 
   useEffect(() => {
     document.body.style.pointerEvents = "";
@@ -236,33 +366,25 @@ export default function Home() {
 
   useEffect(() => {
     async function hydrate() {
-      const stored = await loadUserState();
-      const usable = isUsableTree(stored.projectTree);
-      const hydratedTree = usable ? (stored.projectTree as ProjectTree) : initialTree();
-      // If the blob was unusable the tree was rebuilt, so old thread keys point
-      // at nodes that no longer exist. Drop them rather than orphan them.
-      const storedThreads = usable ? (stored.threadsByNodeId ?? {}) : {};
-      const hydratedThreads = ensureThreads(normalizeThreads(storedThreads), hydratedTree);
+      // No usable stored workspace (first run, or a blob from before the
+      // current schema): keep the seed already in state and let the persist
+      // effect below write it out as this user's starting point.
+      const workspace = (await loadWorkspace()) ?? seed.workspace;
+      const active = activeProject(workspace) ?? workspace.projects[0];
+      const opened = openProject(active);
 
-      const storedSelection =
-        usable && stored.selectedNodeId && findNode(hydratedTree.roots, stored.selectedNodeId)
-          ? stored.selectedNodeId
-          : initialSelection(hydratedTree);
-
-      const thread = storedSelection
-        ? (nearestSelfOrAncestorOfKind(hydratedTree.roots, storedSelection, "workstream")?.id ??
-          firstWorkstreamId(hydratedTree))
-        : firstWorkstreamId(hydratedTree);
-
-      setTree(hydratedTree);
-      setThreadsByNodeId(hydratedThreads);
-      setSelectedNodeId(storedSelection);
-      setActiveThreadId(thread);
+      setProjects(workspace.projects);
+      setActiveProjectId(active.id);
+      setTree(opened.tree);
+      setSessionsByWorkstreamId(opened.sessions);
+      setSelectedNodeId(opened.selectedNodeId);
+      setActiveThreadId(opened.activeThreadId);
+      setActiveSessionId(opened.activeSessionId);
       setIsHydrated(true);
 
-      const foundations = findByTemplateKey(hydratedTree.roots, TEMPLATE_KEYS.foundations);
+      const foundations = findByTemplateKey(opened.tree.roots, TEMPLATE_KEYS.foundations);
       if (foundations) expansion.expand(foundations.id);
-      if (storedSelection) expansion.revealNode(storedSelection);
+      revealIn(opened.tree, opened.selectedNodeId, expansion);
     }
     void hydrate();
     // Runs once on mount.
@@ -270,12 +392,83 @@ export default function Home() {
   }, []);
 
   // ── persist ────────────────────────────────────────────────────────────────
+
+  /**
+   * The workspace as it should be stored right now. `projects` holds a stale
+   * entry for the active project — folding the live state in here is what lets
+   * the inactive projects stay untouched without mirroring every keystroke
+   * into the projects array.
+   */
+  const workspace = useMemo<Workspace>(
+    () => ({
+      schemaVersion: SCHEMA_VERSION,
+      activeProjectId,
+      projects: projects.map((project) =>
+        project.id === activeProjectId
+          ? { id: project.id, tree, selectedNodeId, sessionsByWorkstreamId }
+          : project
+      ),
+    }),
+    [projects, activeProjectId, tree, selectedNodeId, sessionsByWorkstreamId]
+  );
+
   // Still unthrottled — every streamed token triggers a full-blob upsert. Fixed
   // in the storage-hardening phase, deliberately kept out of this change.
   useEffect(() => {
     if (!isHydrated) return;
-    void saveUserState({ projectTree: tree, selectedNodeId, threadsByNodeId });
-  }, [isHydrated, tree, selectedNodeId, threadsByNodeId]);
+    void saveWorkspace(workspace);
+  }, [isHydrated, workspace]);
+
+  // ── projects ───────────────────────────────────────────────────────────────
+
+  const projectOptions = useMemo(
+    () =>
+      projects.map((project) => ({
+        id: project.id,
+        // The active project's name comes from `tree`, which runs ahead of its
+        // stored copy — the agent can rename a project mid-conversation.
+        name: project.id === activeProjectId ? tree.projectName : project.tree.projectName,
+      })),
+    [projects, activeProjectId, tree.projectName]
+  );
+
+  const handleSwitchProject = useCallback(
+    (nextProjectId: string) => {
+      if (nextProjectId === activeProjectId) return;
+      const next = projects.find((project) => project.id === nextProjectId);
+      if (!next) return;
+
+      // Write the outgoing project's live state back before leaving it. Not
+      // doing this is exactly what made the original ProjectSwitcher destroy
+      // the previous project's plan and chat history.
+      setProjects((prev) =>
+        prev.map((project) =>
+          project.id === activeProjectId
+            ? { id: project.id, tree, selectedNodeId, sessionsByWorkstreamId }
+            : project
+        )
+      );
+
+      const opened = openProject(next);
+      setActiveProjectId(nextProjectId);
+      setTree(opened.tree);
+      setSessionsByWorkstreamId(opened.sessions);
+      setSelectedNodeId(opened.selectedNodeId);
+      setActiveThreadId(opened.activeThreadId);
+      setActiveSessionId(opened.activeSessionId);
+
+      // Chat-pane state belongs to the project we just left.
+      setError(undefined);
+      setRetryText(undefined);
+      setSuggestions([]);
+      setIsNearBottom(true);
+
+      const foundations = findByTemplateKey(opened.tree.roots, TEMPLATE_KEYS.foundations);
+      if (foundations) expansion.expand(foundations.id);
+      revealIn(opened.tree, opened.selectedNodeId, expansion);
+    },
+    [activeProjectId, projects, tree, selectedNodeId, sessionsByWorkstreamId, expansion]
+  );
 
   // ── selection ──────────────────────────────────────────────────────────────
 
@@ -288,13 +481,45 @@ export default function Home() {
 
       const workstream = nearestSelfOrAncestorOfKind(tree.roots, nodeId, "workstream");
       // A folder has no workstream ancestor — keep the conversation we're in.
-      if (workstream) setActiveThreadId(workstream.id);
+      if (workstream && workstream.id !== activeThreadId) {
+        setActiveThreadId(workstream.id);
+        setActiveSessionId(latestSessionId(sessionsByWorkstreamId[workstream.id]));
+      }
 
       const node = findNode(tree.roots, nodeId);
       if (node && node.children.length > 0) expansion.toggle(nodeId);
     },
-    [tree, expansion]
+    [tree, expansion, activeThreadId, sessionsByWorkstreamId]
   );
+
+  const handleOpenSession = useCallback((workstreamId: string, sessionId: string) => {
+    setActiveThreadId(workstreamId);
+    setActiveSessionId(sessionId);
+  }, []);
+
+  const handleNewChat = useCallback(() => {
+    const workstreamId =
+      activeThreadId ??
+      (selectedNodeId
+        ? nearestSelfOrAncestorOfKind(tree.roots, selectedNodeId, "workstream")?.id
+        : undefined) ??
+      firstWorkstreamId(tree);
+    if (!workstreamId) return;
+
+    const workstream = findNode(tree.roots, workstreamId);
+    const session = createGreetingSession(
+      workstreamId,
+      workstream?.label ?? "",
+      workstream && workstream.kind === "workstream" ? workstream.objective : undefined
+    );
+
+    setSessionsByWorkstreamId((prev) => ({
+      ...prev,
+      [workstreamId]: [...(prev[workstreamId] ?? []), session],
+    }));
+    setActiveThreadId(workstreamId);
+    setActiveSessionId(session.id);
+  }, [activeThreadId, selectedNodeId, tree]);
 
   const handleToggleAction = useCallback((nodeId: string, done: boolean) => {
     setTree((prev) => {
@@ -311,20 +536,22 @@ export default function Home() {
     });
   }, []);
 
-  // ── chat ───────────────────────────────────────────────────────────────────
+  // ── sessions ───────────────────────────────────────────────────────────────
 
-  const updateAssistantMessage = useCallback(
+  const updateSessionMessages = useCallback(
     (
-      threadId: string,
-      assistantMessageId: string,
-      updater: (message: ThreadMessage) => ThreadMessage
+      workstreamId: string,
+      sessionId: string,
+      updater: (messages: ThreadMessage[]) => ThreadMessage[]
     ) => {
-      setThreadsByNodeId((prev) => {
-        const thread = prev[threadId] ?? [];
+      setSessionsByWorkstreamId((prev) => {
+        const list = prev[workstreamId] ?? [];
         return {
           ...prev,
-          [threadId]: thread.map((message) =>
-            message.id === assistantMessageId ? updater(message) : message
+          [workstreamId]: list.map((session) =>
+            session.id === sessionId
+              ? { ...session, messages: updater(session.messages), updatedAt: Date.now() }
+              : session
           ),
         };
       });
@@ -332,9 +559,89 @@ export default function Home() {
     []
   );
 
+  const tagSession = useCallback((workstreamId: string, sessionId: string, nodeIds: string[]) => {
+    if (nodeIds.length === 0) return;
+    setSessionsByWorkstreamId((prev) => {
+      const list = prev[workstreamId] ?? [];
+      return {
+        ...prev,
+        [workstreamId]: list.map((session) =>
+          session.id === sessionId
+            ? { ...session, taggedNodeIds: [...new Set([...session.taggedNodeIds, ...nodeIds])] }
+            : session
+        ),
+      };
+    });
+  }, []);
+
+  // ── proposals ──────────────────────────────────────────────────────────────
+  // Substance the agent proposes — resolved decisions, notes, new actions — sits
+  // on the message that proposed it until the user accepts or rejects it. Only
+  // acceptance writes to the tree and tags the session; see APPROACH.md §4.
+
+  const setProposalStatus = useCallback(
+    (
+      workstreamId: string,
+      sessionId: string,
+      messageId: string,
+      proposalId: string,
+      status: ProposalRecord["status"]
+    ) => {
+      updateSessionMessages(workstreamId, sessionId, (msgs) =>
+        msgs.map((m) =>
+          m.id === messageId
+            ? {
+                ...m,
+                proposals: m.proposals?.map((p) => (p.id === proposalId ? { ...p, status } : p)),
+              }
+            : m
+        )
+      );
+    },
+    [updateSessionMessages]
+  );
+
+  const handleProposalAccept = useCallback(
+    (workstreamId: string, sessionId: string, messageId: string, proposal: ProposalRecord) => {
+      setTree((prev) => {
+        const roots = applyProposal(prev.roots, proposal);
+        return roots === prev.roots ? prev : { ...prev, roots };
+      });
+      setProposalStatus(workstreamId, sessionId, messageId, proposal.id, "accepted");
+      tagSession(workstreamId, sessionId, [proposalTargetId(proposal)]);
+    },
+    [setProposalStatus, tagSession]
+  );
+
+  const handleProposalReject = useCallback(
+    (workstreamId: string, sessionId: string, messageId: string, proposalId: string) => {
+      setProposalStatus(workstreamId, sessionId, messageId, proposalId, "rejected");
+    },
+    [setProposalStatus]
+  );
+
+  // ── chat ───────────────────────────────────────────────────────────────────
+
+  const updateAssistantMessage = useCallback(
+    (
+      workstreamId: string,
+      sessionId: string,
+      assistantMessageId: string,
+      updater: (message: ThreadMessage) => ThreadMessage
+    ) => {
+      updateSessionMessages(workstreamId, sessionId, (msgs) =>
+        msgs.map((message) => (message.id === assistantMessageId ? updater(message) : message))
+      );
+    },
+    [updateSessionMessages]
+  );
+
   const finalizeAssistantMessage = useCallback(
-    (threadId: string, assistantMessageId: string, state: MessageState) => {
-      updateAssistantMessage(threadId, assistantMessageId, (message) => ({ ...message, state }));
+    (workstreamId: string, sessionId: string, assistantMessageId: string, state: MessageState) => {
+      updateAssistantMessage(workstreamId, sessionId, assistantMessageId, (message) => ({
+        ...message,
+        state,
+      }));
     },
     [updateAssistantMessage]
   );
@@ -343,11 +650,12 @@ export default function Home() {
     async (overrideText?: string, options?: { silent?: boolean }) => {
       const text = (overrideText ?? inputValue).trim();
       if (!text || isSendingRef.current) return;
-      const threadId = activeThreadId;
-      if (!threadId) return;
+      const workstreamId = activeThreadId;
+      const sessionId = activeSessionId;
+      if (!workstreamId || !sessionId) return;
 
       const silent = options?.silent ?? false;
-      const priorMessages = (threadsByNodeId[threadId] ?? [])
+      const priorMessages = (activeSession?.messages ?? [])
         .filter((m) => m.state === "complete" || m.state === undefined)
         .map((m) => ({ role: m.role, text: m.text }));
       const userMessage = createMessage("user", text);
@@ -362,12 +670,9 @@ export default function Home() {
         setInputValue("");
       }
       setSuggestions([]);
-      setThreadsByNodeId((prev) => ({
-        ...prev,
-        [threadId]: silent
-          ? [...(prev[threadId] ?? []), assistantMessage]
-          : [...(prev[threadId] ?? []), userMessage, assistantMessage],
-      }));
+      updateSessionMessages(workstreamId, sessionId, (msgs) =>
+        silent ? [...msgs, assistantMessage] : [...msgs, userMessage, assistantMessage]
+      );
 
       const controller = new AbortController();
       let timedOut = false;
@@ -398,8 +703,8 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: text,
-            navModel: tree,
-            activeNavItemId: selectedNodeId ?? threadId,
+            tree,
+            activeNodeId: selectedNodeId ?? workstreamId,
             threadMessages: priorMessages,
           }),
           signal: controller.signal,
@@ -407,13 +712,13 @@ export default function Home() {
 
         if (!res.ok) {
           const data = (await res.json().catch(() => ({}))) as { reply?: string; ok?: boolean };
-          finalizeAssistantMessage(threadId, assistantMessage.id, "error");
+          finalizeAssistantMessage(workstreamId, sessionId, assistantMessage.id, "error");
           markErrorWithRetry(data.reply ?? "Something went wrong. Try again.");
           return;
         }
 
         if (!res.body) {
-          finalizeAssistantMessage(threadId, assistantMessage.id, "error");
+          finalizeAssistantMessage(workstreamId, sessionId, assistantMessage.id, "error");
           markErrorWithRetry("No response stream was returned.");
           return;
         }
@@ -441,7 +746,7 @@ export default function Home() {
               if (event.seq <= highestSeq) continue;
               highestSeq = event.seq;
               gotAnyText = true;
-              updateAssistantMessage(threadId, assistantMessage.id, (message) => ({
+              updateAssistantMessage(workstreamId, sessionId, assistantMessage.id, (message) => ({
                 ...message,
                 text: message.text + event.content,
                 state: "streaming",
@@ -449,10 +754,30 @@ export default function Home() {
               continue;
             }
 
-            if (event.type === "nav_patch") {
-              // The old group/item patch ops don't map onto the node tree. The
-              // replacement contract (tree_patch) lands with the prompt rewrite;
-              // until then these are dropped rather than misapplied.
+            if (event.type === "structure") {
+              const roots = applyStructurePatch(tree.roots, event.content);
+              const projectName = event.content.setProjectName?.trim() || tree.projectName;
+              if (roots !== tree.roots || projectName !== tree.projectName) {
+                const nextTree: ProjectTree = { ...tree, roots, projectName };
+                setTree(nextTree);
+                // New workstreams need a seeded greeting the moment they exist,
+                // same as ones the template ships with — otherwise clicking into
+                // one shows a blank session instead of its label/objective.
+                setSessionsByWorkstreamId((prev) => ensureSessions(prev, nextTree));
+              }
+              tagSession(workstreamId, sessionId, structurePatchTargetIds(event.content));
+              continue;
+            }
+
+            if (event.type === "proposals") {
+              const records: ProposalRecord[] = event.content.map((proposal) => ({
+                ...proposal,
+                status: "pending",
+              }));
+              updateAssistantMessage(workstreamId, sessionId, assistantMessage.id, (m) => ({
+                ...m,
+                proposals: [...(m.proposals ?? []), ...records],
+              }));
               continue;
             }
 
@@ -462,14 +787,14 @@ export default function Home() {
             }
 
             if (event.type === "error") {
-              finalizeAssistantMessage(threadId, assistantMessage.id, "error");
+              finalizeAssistantMessage(workstreamId, sessionId, assistantMessage.id, "error");
               markErrorWithRetry(event.message || "The stream ended with an error.");
               doneEventReceived = true;
               break;
             }
 
             if (event.type === "done") {
-              finalizeAssistantMessage(threadId, assistantMessage.id, "complete");
+              finalizeAssistantMessage(workstreamId, sessionId, assistantMessage.id, "complete");
               doneEventReceived = true;
               break;
             }
@@ -482,7 +807,8 @@ export default function Home() {
 
         if (!doneEventReceived) {
           finalizeAssistantMessage(
-            threadId,
+            workstreamId,
+            sessionId,
             assistantMessage.id,
             gotAnyText ? "complete" : "error"
           );
@@ -494,15 +820,15 @@ export default function Home() {
         const isAbortError = err instanceof Error && err.name === "AbortError";
 
         if (isAbortError && stopRequestedRef.current) {
-          finalizeAssistantMessage(threadId, assistantMessage.id, "cancelled");
+          finalizeAssistantMessage(workstreamId, sessionId, assistantMessage.id, "cancelled");
         } else if (isAbortError && interrupted) {
-          finalizeAssistantMessage(threadId, assistantMessage.id, "error");
+          finalizeAssistantMessage(workstreamId, sessionId, assistantMessage.id, "error");
           markErrorWithRetry("Connection lost. Partial response saved.");
         } else if (isAbortError && timedOut) {
-          finalizeAssistantMessage(threadId, assistantMessage.id, "error");
+          finalizeAssistantMessage(workstreamId, sessionId, assistantMessage.id, "error");
           markErrorWithRetry("Request timed out. Partial response saved.");
         } else {
-          finalizeAssistantMessage(threadId, assistantMessage.id, "error");
+          finalizeAssistantMessage(workstreamId, sessionId, assistantMessage.id, "error");
           const msg = err instanceof Error ? err.message : "Something went wrong. Try again.";
           markErrorWithRetry(msg);
         }
@@ -516,13 +842,16 @@ export default function Home() {
       }
     },
     [
+      activeSession,
+      activeSessionId,
       activeThreadId,
       finalizeAssistantMessage,
       inputValue,
       selectedNodeId,
-      threadsByNodeId,
+      tagSession,
       tree,
       updateAssistantMessage,
+      updateSessionMessages,
     ]
   );
 
@@ -575,14 +904,16 @@ export default function Home() {
 
   useEffect(() => {
     if (isNearBottom) scrollToBottom();
-  }, [activeThreadId, isNearBottom, messages, scrollToBottom]);
+  }, [activeSessionId, isNearBottom, messages, scrollToBottom]);
 
   // ── render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-seymour-canvas">
       <Nav
-        projectName={tree.projectName}
+        projects={projectOptions}
+        activeProjectId={activeProjectId}
+        onSwitchProject={handleSwitchProject}
         roots={tree.roots}
         selectedNodeId={selectedNodeId}
         activeThreadId={activeThreadId}
@@ -590,19 +921,24 @@ export default function Home() {
         onSelect={handleSelect}
         onToggleAction={handleToggleAction}
       />
-      <aside
-        className="sticky top-0 h-screen w-[400px] min-w-[400px] max-w-[400px] overflow-hidden border-r border-seymour-border bg-seymour-bg"
-        aria-label="Detail panel"
-      >
-        <DetailPanel node={selectedNode} />
-      </aside>
       <main className="flex h-screen flex-1 flex-col overflow-hidden bg-seymour-canvas" role="main">
         <section className="flex flex-1 flex-col items-center overflow-hidden" aria-label="Chat">
           <MessageList
             messages={messages}
+            tree={tree}
             isStreaming={isStreaming}
             onStopGenerating={handleStopGenerating}
             onScroll={handleMessagesScroll}
+            onProposalAccept={(messageId, proposal) =>
+              activeThreadId &&
+              activeSessionId &&
+              handleProposalAccept(activeThreadId, activeSessionId, messageId, proposal)
+            }
+            onProposalReject={(messageId, proposalId) =>
+              activeThreadId &&
+              activeSessionId &&
+              handleProposalReject(activeThreadId, activeSessionId, messageId, proposalId)
+            }
             ref={messagesRef}
           />
           {error && (
@@ -634,10 +970,30 @@ export default function Home() {
             value={inputValue}
             onChange={setInputValue}
             onSend={sendMessage}
+            onNewChat={handleNewChat}
             disabled={isSending}
           />
         </div>
       </main>
+      <aside
+        className="sticky top-0 h-screen w-[400px] min-w-[400px] max-w-[400px] overflow-hidden border-l border-seymour-border bg-seymour-bg"
+        aria-label="Detail panel"
+      >
+        <ResizableSplit
+          topLabel="Doc"
+          bottomLabel="History"
+          top={<DetailPanel node={selectedNode} />}
+          bottom={
+            <ChatHistoryPanel
+              sessions={nodeHistory}
+              activeSessionId={activeSessionId}
+              onOpenSession={(sessionId) => {
+                if (historyWorkstreamId) handleOpenSession(historyWorkstreamId, sessionId);
+              }}
+            />
+          }
+        />
+      </aside>
     </div>
   );
 }

@@ -1,11 +1,19 @@
 "use client";
 
 import { useRef, useEffect } from "react";
+import { SquarePen } from "lucide-react";
 
 type ChatComposerProps = {
   value: string;
   onChange: (value: string) => void;
   onSend: (overrideText?: string) => void;
+  /**
+   * Starting a chat lives here, next to the cursor, rather than in a header or
+   * a panel — switching topics is a one-click move from wherever you're already
+   * typing, and the composer is the one element that never scrolls away or
+   * changes with tree selection.
+   */
+  onNewChat?: () => void;
   disabled?: boolean;
 };
 
@@ -14,7 +22,13 @@ const LINE_HEIGHT = 22;
 const MIN_HEIGHT = LINE_HEIGHT;
 const MAX_HEIGHT = MAX_LINES * LINE_HEIGHT;
 
-export function ChatComposer({ value, onChange, onSend, disabled = false }: ChatComposerProps) {
+export function ChatComposer({
+  value,
+  onChange,
+  onSend,
+  onNewChat,
+  disabled = false,
+}: ChatComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -69,7 +83,24 @@ export function ChatComposer({ value, onChange, onSend, disabled = false }: Chat
 
   return (
     <div className="flex flex-col items-center bg-seymour-canvas px-6 pb-4 pt-2">
-      <div className="flex w-full max-w-chat-content items-end gap-2.5 rounded border border-seymour-border bg-seymour-surface-2 px-4 py-2.5 focus-within:ring-2 focus-within:ring-seymour-accent">
+      <div className="flex w-full max-w-chat-content items-end gap-2.5 rounded border border-seymour-border bg-seymour-surface-2 py-2.5 pl-2.5 pr-4 focus-within:ring-2 focus-within:ring-seymour-accent">
+        {onNewChat && (
+          <button
+            type="button"
+            onClick={onNewChat}
+            // SquarePen, not a plus: in a composer a "+" reads as "attach".
+            className="group relative mb-0.5 flex size-6 shrink-0 items-center justify-center rounded text-seymour-text/50 transition hover:bg-seymour-border hover:text-seymour-text focus:outline-none focus-visible:ring-2 focus-visible:ring-seymour-accent"
+            aria-label="New chat"
+          >
+            <SquarePen className="size-4" />
+            <span
+              role="tooltip"
+              className="pointer-events-none absolute bottom-full left-0 mb-2 whitespace-nowrap rounded border border-seymour-border-subtle bg-seymour-surface-2 px-2 py-1 text-label text-seymour-text opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+            >
+              New chat
+            </span>
+          </button>
+        )}
         <textarea
           ref={textareaRef}
           value={value}

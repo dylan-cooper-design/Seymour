@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getSeymourInstructions } from "../../../../agents/first/prompt";
-import type { NavModel } from "@/types/navigation";
+import type { ProjectTree } from "@/types/project";
 import {
   extractJsonBlock,
   createJsonBlockFilter,
@@ -47,8 +47,8 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => ({}));
     const message = (body?.message ?? "").trim();
-    const navModel = (body?.navModel ?? null) as NavModel | null;
-    const activeNavItemId = (body?.activeNavItemId ?? "").trim();
+    const tree = (body?.tree ?? null) as ProjectTree | null;
+    const activeNodeId = (body?.activeNodeId ?? "").trim();
     const threadMessages = (body?.threadMessages ?? []) as ThreadMessage[];
 
     if (!message) {
@@ -65,9 +65,9 @@ export async function POST(request: Request) {
 
     const client = new Anthropic({ apiKey, maxRetries: 2, timeout: 25_000 });
 
-    const navContext = navModel ? JSON.stringify({ activeNavItemId, navModel }) : "{}";
+    const projectContext = tree ? JSON.stringify({ activeNodeId, tree }) : "{}";
 
-    const apiMessages = buildApiMessages(threadMessages, navContext, message);
+    const apiMessages = buildApiMessages(threadMessages, projectContext, message);
 
     const stream = client.messages.stream({
       model: "claude-sonnet-4-6",
@@ -106,9 +106,12 @@ export async function POST(request: Request) {
           seq += 1;
         }
 
-        const { navPatch, suggestions } = extractJsonBlock(rawReply);
-        if (navPatch) {
-          send({ type: "nav_patch", content: navPatch });
+        const { structure, proposals, suggestions } = extractJsonBlock(rawReply);
+        if (structure) {
+          send({ type: "structure", content: structure });
+        }
+        if (proposals && proposals.length > 0) {
+          send({ type: "proposals", content: proposals });
         }
         if (suggestions && suggestions.length > 0) {
           send({ type: "suggestions", content: suggestions });
