@@ -61,7 +61,7 @@ describe("createProductDesignTemplate", () => {
       TEMPLATE_KEYS.foundations
     );
     expect(foundations?.children.map((c) => c.label)).toEqual([
-      "Problem statement",
+      "Outcome",
       "Users",
       "Goals & success metrics",
       "Constraints & assumptions",
@@ -82,9 +82,9 @@ describe("createProductDesignTemplate", () => {
     }
   });
 
-  it("lands the user on the problem statement", () => {
+  it("lands the user on the outcome workstream", () => {
     const { roots } = createProductDesignTemplate();
-    expect(findByTemplateKey(roots, INITIAL_TEMPLATE_KEY)?.label).toBe("Problem statement");
+    expect(findByTemplateKey(roots, INITIAL_TEMPLATE_KEY)?.label).toBe("Outcome");
   });
 
   it("mints unique ids", () => {

@@ -91,7 +91,7 @@ export function createMoonshotProject(): ProjectState {
 
   // ── Foundations ───────────────────────────────────────────────────────────
 
-  const problemId = idOf(roots, TEMPLATE_KEYS.problemStatement);
+  const problemId = idOf(roots, TEMPLATE_KEYS.outcome);
   roots = setNote(
     roots,
     problemId,
@@ -434,7 +434,7 @@ export function createMoonshotProject(): ProjectState {
         taggedNodeIds: [problemId, threeRsId],
         agoMs: 3 * DAY,
         turns: [
-          greeting("Problem statement", "Settle what problem this project solves, and for whom."),
+          greeting("Outcome", "What's the outcome for this project?"),
           {
             role: "user",
             text: "0→1 fintech product, 12 verticals. We just lost a deal because we can't do investor reporting, and I have two weeks to get it demo-ready.",
@@ -449,7 +449,7 @@ export function createMoonshotProject(): ProjectState {
           },
           {
             role: "assistant",
-            text: "That's your architecture, then. Three outcomes is small enough to hold in your head and complete enough that every feature has an obvious home — which is what you need when the roadmap is 200+ features and the sprint is two weeks.\n\nI've filed it as a resolved decision under Problem statement.",
+            text: "That's your architecture, then. Three outcomes is small enough to hold in your head and complete enough that every feature has an obvious home — which is what you need when the roadmap is 200+ features and the sprint is two weeks.\n\nI've filed it as a resolved decision under Outcome.",
             proposals: [
               {
                 id: createId(),
@@ -472,7 +472,7 @@ export function createMoonshotProject(): ProjectState {
         taggedNodeIds: [usersId, defaultViewId],
         agoMs: 2 * DAY,
         turns: [
-          greeting("Users", "Settle who the primary user is and what they're trying to do."),
+          greeting("Users", "Who's this for, and what are they trying to do?"),
           {
             role: "user",
             text: "Analysts track hundreds of millions of data points across millions of loans, but 99.9% clear without issue. Whole departments exist for the 0.1%.",
