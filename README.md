@@ -25,6 +25,5 @@ Data is stored in the browser (local storage) via helpers in `src/lib/storage/`;
 
 ## Docs
 
-- [docs/README.md](docs/README.md) – Index (Figma workflow, agents, architecture)
-- [docs/figma.md](docs/figma.md) – Figma MCP and design-to-code
-- [docs/agents/README.md](docs/agents/README.md) – Agent structure and how to add agents/skills
+- [product/README.md](product/README.md) – The product itself: why it exists (`FOUNDATIONS.md`), how it behaves (`APPROACH.md`), how the agents are structured (`agents-architecture.md`)
+- [docs/README.md](docs/README.md) – Technical/setup references (Figma workflow, design tokens) and dated design specs

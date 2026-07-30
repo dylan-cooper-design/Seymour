@@ -1,15 +1,17 @@
 "use client";
 
 import { LogOut } from "lucide-react";
-import { clearUserState } from "@/lib/storage";
+import { clearWorkspace } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/client";
 import type { Forest } from "@/lib/tree/nodes";
 import type { TreeExpansion } from "@/hooks/useTreeExpansion";
 import { NodeTree } from "./NodeTree";
-import { ProjectHeader } from "./ProjectHeader";
+import { ProjectHeader, type ProjectOption } from "./ProjectHeader";
 
 type NavProps = {
-  projectName: string;
+  projects: ProjectOption[];
+  activeProjectId: string | null;
+  onSwitchProject: (projectId: string) => void;
   roots: Forest;
   selectedNodeId: string | null;
   activeThreadId: string | null;
@@ -19,7 +21,9 @@ type NavProps = {
 };
 
 export function Nav({
-  projectName,
+  projects,
+  activeProjectId,
+  onSwitchProject,
   roots,
   selectedNodeId,
   activeThreadId,
@@ -32,7 +36,11 @@ export function Nav({
       className="sticky top-0 flex h-screen w-sidebar shrink-0 flex-col border-r border-seymour-border bg-seymour-bg"
       aria-label="Project tree"
     >
-      <ProjectHeader projectName={projectName} />
+      <ProjectHeader
+        projects={projects}
+        activeProjectId={activeProjectId}
+        onSwitchProject={onSwitchProject}
+      />
 
       <div className="flex-1 overflow-y-auto">
         <NodeTree
@@ -50,7 +58,7 @@ export function Nav({
           type="button"
           onClick={async () => {
             const supabase = createClient();
-            await clearUserState();
+            await clearWorkspace();
             await supabase.auth.signOut();
             window.location.href = "/login";
           }}

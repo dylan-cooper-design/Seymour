@@ -1,11 +1,18 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { MessageState } from "@/types/navigation";
+import type { ProjectTree } from "@/types/project";
+import type { ProposalRecord } from "@/types/tree-patch";
+import { ProposalCard } from "@/components/ProposalCard";
 
 type MessageBubbleProps = {
   role: "user" | "assistant";
   text: string;
   state?: MessageState;
+  proposals?: ProposalRecord[];
+  tree?: ProjectTree;
+  onProposalAccept?: (proposal: ProposalRecord) => void;
+  onProposalReject?: (proposalId: string) => void;
 };
 
 type QAPair = { question: string; answer: string };
@@ -24,7 +31,15 @@ function parseQAPairs(text: string): QAPair[] | null {
   return pairs.length > 0 ? pairs : null;
 }
 
-export function MessageBubble({ role, text, state }: MessageBubbleProps) {
+export function MessageBubble({
+  role,
+  text,
+  state,
+  proposals,
+  tree,
+  onProposalAccept,
+  onProposalReject,
+}: MessageBubbleProps) {
   const isUser = role === "user";
   const showTypingIndicator = !isUser && state === "streaming" && text.length === 0;
   const statusText =
@@ -140,6 +155,19 @@ export function MessageBubble({ role, text, state }: MessageBubbleProps) {
             </ReactMarkdown>
           )}
           {statusText && <p className="mt-1 text-label text-seymour-text/50">{statusText}</p>}
+          {proposals && tree && proposals.length > 0 && (
+            <div className="mt-3 flex flex-col gap-2">
+              {proposals.map((proposal) => (
+                <ProposalCard
+                  key={proposal.id}
+                  proposal={proposal}
+                  tree={tree}
+                  onAccept={(edited) => onProposalAccept?.(edited)}
+                  onReject={() => onProposalReject?.(proposal.id)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
