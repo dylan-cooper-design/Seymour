@@ -9,12 +9,28 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+/**
+ * Real subsections inside a node's note (## Outcome, ## Why) render as this —
+ * same small-caps treatment as SectionLabel, so a note can structure itself
+ * without the detail panel needing to know its shape in advance.
+ */
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="text-[10px] font-medium uppercase tracking-wide text-seymour-text/50">
+      {children}
+    </h2>
+  );
+}
+
 export function Markdown({ children }: { children: string }) {
   return (
     <div className="flex flex-col gap-3">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
+          h1: ({ children }) => <SectionHeading>{children}</SectionHeading>,
+          h2: ({ children }) => <SectionHeading>{children}</SectionHeading>,
+          h3: ({ children }) => <SectionHeading>{children}</SectionHeading>,
           p: ({ children }) => (
             <p className="text-body-sm leading-relaxed text-seymour-text">{children}</p>
           ),

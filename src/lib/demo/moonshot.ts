@@ -61,8 +61,8 @@ function session(opts: {
   };
 }
 
-function greeting(label: string, objective: string): Turn {
-  return { role: "assistant", text: `**${label}**\n\n${objective}` };
+function greeting(objective: string): Turn {
+  return { role: "assistant", text: objective };
 }
 
 // ─── tree ─────────────────────────────────────────────────────────────────────
@@ -91,14 +91,18 @@ export function createMoonshotProject(): ProjectState {
 
   // ── Foundations ───────────────────────────────────────────────────────────
 
-  const problemId = idOf(roots, TEMPLATE_KEYS.problemStatement);
+  const problemId = idOf(roots, TEMPLATE_KEYS.outcome);
   roots = setNote(
     roots,
     problemId,
     [
-      "Moonshot unifies 50+ legacy tools across a $14 trillion industry, spanning 12 product verticals.",
+      "## Outcome",
       "",
-      "The product could not do **investor reporting**, and a major prospect told us not to come back without it. This project covers that gap: define the core experience and information architecture, and get it demo-ready in two weeks.",
+      "Investor reporting demo-ready in a two-week sprint — core experience and information architecture defined well enough to put in front of enterprise prospects.",
+      "",
+      "## Why",
+      "",
+      "Moonshot unifies 50+ legacy tools across a $14 trillion industry, spanning 12 product verticals. The product couldn't do **investor reporting**, and a major prospect said not to come back without it — this project closes that gap.",
       "",
       "*White-labeled — details altered to protect confidential information.*",
     ].join("\n")
@@ -195,13 +199,13 @@ export function createMoonshotProject(): ProjectState {
     roots,
     constraintsId,
     [
-      "**Fixed**",
+      "## Fixed",
       "",
       "- Zero tolerance for error — regulated industry, where a wrong number is liability rather than a bug",
       '- Every dollar amount balances to the penny; rounding differences ("penny variances") are a critical miss if left unresolved',
       "- Two weeks to demo",
       "",
-      "**Assumed**",
+      "## Assumed",
       "",
       "- Switching costs are high enough that parity won't win — the solution has to remove a limitation, not match one",
       "- Analysts will trust a recommendation if every data point behind it is linked rather than generated",
@@ -434,7 +438,7 @@ export function createMoonshotProject(): ProjectState {
         taggedNodeIds: [problemId, threeRsId],
         agoMs: 3 * DAY,
         turns: [
-          greeting("Problem statement", "Settle what problem this project solves, and for whom."),
+          greeting("What's the outcome — and why does it matter?"),
           {
             role: "user",
             text: "0→1 fintech product, 12 verticals. We just lost a deal because we can't do investor reporting, and I have two weeks to get it demo-ready.",
@@ -449,7 +453,7 @@ export function createMoonshotProject(): ProjectState {
           },
           {
             role: "assistant",
-            text: "That's your architecture, then. Three outcomes is small enough to hold in your head and complete enough that every feature has an obvious home — which is what you need when the roadmap is 200+ features and the sprint is two weeks.\n\nI've filed it as a resolved decision under Problem statement.",
+            text: "That's your architecture, then. Three outcomes is small enough to hold in your head and complete enough that every feature has an obvious home — which is what you need when the roadmap is 200+ features and the sprint is two weeks.\n\nI've filed it as a resolved decision under Outcome.",
             proposals: [
               {
                 id: createId(),
@@ -472,7 +476,7 @@ export function createMoonshotProject(): ProjectState {
         taggedNodeIds: [usersId, defaultViewId],
         agoMs: 2 * DAY,
         turns: [
-          greeting("Users", "Settle who the primary user is and what they're trying to do."),
+          greeting("Who's this for, and what are they trying to do?"),
           {
             role: "user",
             text: "Analysts track hundreds of millions of data points across millions of loans, but 99.9% clear without issue. Whole departments exist for the 0.1%.",
@@ -508,10 +512,7 @@ export function createMoonshotProject(): ProjectState {
         taggedNodeIds: [scaleId],
         agoMs: 2 * DAY + 4 * HOUR,
         turns: [
-          greeting(
-            "Data volume and the 0.1% problem",
-            "Understand what real data does to the interface at scale."
-          ),
+          greeting("Understand what real data does to the interface at scale."),
           {
             role: "user",
             text: "I want to prototype against real data, not 20 rows of lorem ipsum.",
@@ -538,7 +539,7 @@ export function createMoonshotProject(): ProjectState {
         taggedNodeIds: [hitlId, authorityId],
         agoMs: 26 * HOUR,
         turns: [
-          greeting("Human-in-the-loop AI", "Settle how AI and analysts divide the work."),
+          greeting("Settle how AI and analysts divide the work."),
           {
             role: "user",
             text: "Penny variances are mostly rounding differences, and resolving one takes hours of document hunting. Feels like the obvious place for AI. But we're regulated — zero tolerance.",
@@ -577,7 +578,7 @@ export function createMoonshotProject(): ProjectState {
         taggedNodeIds: [aiStandardId],
         agoMs: 20 * HOUR,
         turns: [
-          greeting("The AI standard", "Settle what AI is allowed to do, product-wide."),
+          greeting("Settle what AI is allowed to do, product-wide."),
           {
             role: "user",
             text: "Compliance wants a blanket rule for AI across all 12 verticals, not a per-feature argument.",
@@ -600,7 +601,7 @@ export function createMoonshotProject(): ProjectState {
         taggedNodeIds: [chartsId, oneOrTwoId],
         agoMs: 5 * HOUR,
         turns: [
-          greeting("Dashboard charts", "Settle the reusable dashboard chart pattern."),
+          greeting("Settle the reusable dashboard chart pattern."),
           {
             role: "user",
             text: "Product wants a chart of accepted vs rejected loans on the dashboard.",
@@ -624,7 +625,7 @@ export function createMoonshotProject(): ProjectState {
         taggedNodeIds: [chartsId],
         agoMs: 90 * MINUTE,
         turns: [
-          greeting("Dashboard charts", "Settle the reusable dashboard chart pattern."),
+          greeting("Settle the reusable dashboard chart pattern."),
           {
             role: "user",
             text: "How do we make these reusable across the other verticals?",
@@ -643,10 +644,7 @@ export function createMoonshotProject(): ProjectState {
         taggedNodeIds: [dataVizId, chartEarnsId],
         agoMs: 4 * HOUR,
         turns: [
-          greeting(
-            "Data visualization standards",
-            "Settle how visualizations use color, and when to use one at all."
-          ),
+          greeting("Settle how visualizations use color, and when to use one at all."),
           {
             role: "user",
             text: "I want a standard so we stop adding charts just because the space looks empty.",
@@ -665,10 +663,7 @@ export function createMoonshotProject(): ProjectState {
         taggedNodeIds: [smeId],
         agoMs: 3 * DAY + 2 * HOUR,
         turns: [
-          greeting(
-            "SME interviews",
-            "Turn decades of SME expertise into an information architecture."
-          ),
+          greeting("Turn decades of SME expertise into an information architecture."),
           {
             role: "user",
             text: "Three SMEs, forty years of combined experience, and none of them describe the job the same way.",

@@ -97,22 +97,16 @@ function normalizeSessions(sessions: SessionsByWorkstreamId): SessionsByWorkstre
   return normalized;
 }
 
-function workstreamGreeting(label: string, objective?: string): string {
-  return objective ? `**${label}**\n\n${objective}` : `**${label}**`;
+function workstreamGreeting(objective?: string): string {
+  return objective ?? "What do you want to figure out here?";
 }
 
-function createGreetingSession(
-  workstreamId: string,
-  label: string,
-  objective?: string
-): ChatSession {
+function createGreetingSession(workstreamId: string, objective?: string): ChatSession {
   const now = Date.now();
   return {
     id: createMessageId(),
     workstreamId,
-    messages: [
-      createMessage("assistant", workstreamGreeting(label, objective), { state: "complete" }),
-    ],
+    messages: [createMessage("assistant", workstreamGreeting(objective), { state: "complete" })],
     taggedNodeIds: [],
     createdAt: now,
     updatedAt: now,
@@ -139,7 +133,7 @@ function ensureSessions(
     if (node.kind !== "workstream") return;
     validIds.add(node.id);
     if (!next[node.id] || next[node.id].length === 0) {
-      next[node.id] = [createGreetingSession(node.id, node.label, node.objective)];
+      next[node.id] = [createGreetingSession(node.id, node.objective)];
     }
   });
 
@@ -509,7 +503,6 @@ export default function Home() {
     const workstream = findNode(tree.roots, workstreamId);
     const session = createGreetingSession(
       workstreamId,
-      workstream?.label ?? "",
       workstream && workstream.kind === "workstream" ? workstream.objective : undefined
     );
 

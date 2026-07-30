@@ -18,7 +18,7 @@ import { SCHEMA_VERSION, type FolderNode, type ProjectTree } from "@/types/proje
  */
 export const TEMPLATE_KEYS = {
   foundations: "foundations",
-  problemStatement: "foundations.problem-statement",
+  outcome: "foundations.outcome",
   users: "foundations.users",
   goals: "foundations.goals",
   constraints: "foundations.constraints",
@@ -35,25 +35,27 @@ export const TEMPLATE_KEYS = {
 } as const;
 
 /** Where the user lands on a brand-new project. */
-export const INITIAL_TEMPLATE_KEY = TEMPLATE_KEYS.problemStatement;
+export const INITIAL_TEMPLATE_KEY = TEMPLATE_KEYS.outcome;
 
 /**
  * Folders never carry their own readable content — clicking a folder in the
  * nav must never show anything, only navigate. Every folder that would
  * otherwise ship empty gets a README workstream child instead, so there's
  * always something to click into.
+ *
+ * Copy rule: the user is a designer. Never define what a concept is (a
+ * design system, a best practice, a token family) — just say what to put
+ * where, in this app's terms.
  */
 const README_CONTENT = {
   research:
-    "**What goes here:** competitive teardowns, interview synthesis, usability findings, analytics reads.\n\nStart a workstream for each study or question you're chasing.",
+    "One workstream per study or question you're chasing — competitive teardowns, interviews, usability findings, analytics reads.",
   bestPractices:
-    "**What goes here:** established patterns for problems like this one — how others have solved onboarding, checkout, empty states, and similar. Distilled from research, not raw findings.\n\nWhere relevant, ground a pattern in what's already in Patterns — e.g. best practice for confirmation flows, given the existing Modal component.",
+    "One workstream per pattern relevant to this project — onboarding, checkout, empty states, and similar.\n\nGround it in what's already in Patterns where relevant, e.g. confirmation flows given the existing Modal component.",
   patterns:
-    "**What goes here:** the foundations everything else is built from.\n\n*Styles* covers color, type, spacing, elevation and motion. *Components* covers the reusable pieces.",
-  styles:
-    "**What goes here:** color, typography, spacing, elevation, motion — one workstream per token family.",
-  components:
-    "**What goes here:** one workstream per component, or per component family once the set gets large.",
+    "*Styles* — color, type, spacing, elevation, motion.\n\n*Components* — the reusable pieces.",
+  styles: "One workstream per token family — color, typography, spacing, elevation, motion.",
+  components: "One workstream per component, or per family once the set gets large.",
 } as const;
 
 function readme(templateKey: string, note: string) {
@@ -66,21 +68,21 @@ export function createProductDesignTemplate(opts: { projectName?: string } = {})
       templateKey: TEMPLATE_KEYS.foundations,
       locked: true,
       children: [
-        createWorkstream("Problem statement", {
-          templateKey: TEMPLATE_KEYS.problemStatement,
-          objective: "Settle what problem this project solves, and for whom.",
+        createWorkstream("Outcome", {
+          templateKey: TEMPLATE_KEYS.outcome,
+          objective: "What's the outcome — and why does it matter?",
         }),
         createWorkstream("Users", {
           templateKey: TEMPLATE_KEYS.users,
-          objective: "Settle who the primary user is and what they're trying to do.",
+          objective: "Who's this for, and what are they trying to do?",
         }),
         createWorkstream("Goals & success metrics", {
           templateKey: TEMPLATE_KEYS.goals,
-          objective: "Settle what success looks like and how it will be measured.",
+          objective: "What does success look like, and how will you measure it?",
         }),
         createWorkstream("Constraints & assumptions", {
           templateKey: TEMPLATE_KEYS.constraints,
-          objective: "Surface what's fixed, what's assumed, and what still needs validating.",
+          objective: "What's fixed, what are you assuming, and what still needs validating?",
         }),
       ],
     }),

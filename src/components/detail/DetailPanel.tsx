@@ -9,7 +9,7 @@
  * for the same fact is a guaranteed bug.
  */
 
-import type { DecisionNode, ProjectNode } from "@/types/project";
+import type { DecisionNode, ProjectNode, WorkstreamNode } from "@/types/project";
 import { Markdown } from "@/components/ui/Markdown";
 import { SectionLabel } from "@/components/ui/SectionLabel";
 import { toMlaTitleCase } from "@/lib/format";
@@ -27,6 +27,23 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function Prose({ children }: { children: string }) {
   return <p className="text-body-sm leading-relaxed text-seymour-text">{children}</p>;
+}
+
+/**
+ * A workstream's content is one freeform document (`note`), not a set of
+ * labeled fields — structure comes from headings the note itself contains
+ * (see Markdown's h1-h3 handling), not from this panel. Before there's a
+ * note, `objective` stands in as a muted placeholder in the same spot,
+ * never alongside the note as a separate labeled field.
+ */
+function WorkstreamBody({ node }: { node: WorkstreamNode }) {
+  if (node.note) return <Markdown>{node.note}</Markdown>;
+  if (node.objective) {
+    return (
+      <p className="text-body-sm italic leading-relaxed text-seymour-text/40">{node.objective}</p>
+    );
+  }
+  return null;
 }
 
 function DecisionRecord({ node }: { node: DecisionNode }) {
@@ -124,26 +141,26 @@ export function DetailPanel({ node }: { node?: ProjectNode }) {
   // Folders only navigate — they never carry readable content of their own.
   // A folder's guidance lives in a README child instead (see the product
   // design template), so a note on a folder node is never rendered here.
-  const showNote = Boolean(node.note) && node.kind !== "folder";
+  // Workstreams render their note/objective through WorkstreamBody below,
+  // so they're excluded here too rather than shown a second time.
+  const showGenericNote =
+    Boolean(node.note) && node.kind !== "folder" && node.kind !== "workstream";
 
-  const hasBody =
-    showNote || node.kind === "decision" || (node.kind === "workstream" && Boolean(node.objective));
+  const workstreamHasContent = node.kind === "workstream" && Boolean(node.note || node.objective);
+
+  const hasBody = showGenericNote || workstreamHasContent || node.kind === "decision";
 
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto p-6">
       <DetailHeader title={toMlaTitleCase(node.label)} />
 
-      {node.kind === "workstream" && node.objective && (
-        <Field label="Objective">
-          <Prose>{node.objective}</Prose>
-        </Field>
-      )}
+      {node.kind === "workstream" && <WorkstreamBody node={node} />}
 
       {node.kind === "decision" && <DecisionRecord node={node} />}
 
       {(node.kind === "folder" || node.kind === "workstream") && <ContainerSummary node={node} />}
 
-      {showNote && node.note && (
+      {showGenericNote && node.note && (
         <Field label="Notes">
           <Markdown>{node.note}</Markdown>
         </Field>
