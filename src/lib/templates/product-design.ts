@@ -70,7 +70,7 @@ export function createProductDesignTemplate(opts: { projectName?: string } = {})
       children: [
         createWorkstream("Outcome", {
           templateKey: TEMPLATE_KEYS.outcome,
-          objective: "What's the outcome for this project?",
+          objective: "What's the outcome — and why does it matter?",
         }),
         createWorkstream("Users", {
           templateKey: TEMPLATE_KEYS.users,
